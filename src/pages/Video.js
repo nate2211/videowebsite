@@ -29,8 +29,8 @@ export default function Video() {
                 </Stack>
 
                 <SectionHeader
-                    title="Timeline video editor with filters, keyframes, and drawing"
-                    description="Upload a video, create filter clips, draw directly on frames, use drawing tablet pressure input, and export the canvas-rendered edit."
+                    title="Timeline video editor with canvas preview, audio FX, filters, and drawing"
+                    description="Upload a video, preview it directly in the canvas, create resizable timeline clips, keyframe visual filter parameters, keyframe audio effect parameters, draw over frames, and export the canvas-rendered edit."
                     compact
                 />
 

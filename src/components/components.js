@@ -17,6 +17,8 @@ import {
     Divider,
     Grid,
     IconButton,
+    LinearProgress,
+    MenuItem,
     Paper,
     Slider,
     Stack,
@@ -30,11 +32,19 @@ import { alpha } from "@mui/material/styles";
 import {
     AddRounded,
     BrushRounded,
+    ChevronLeftRounded,
+    ChevronRightRounded,
     CloudUploadRounded,
+    ContentCutRounded,
     DeleteRounded,
+    DragIndicatorRounded,
     FileDownloadRounded,
+    GraphicEqRounded,
     HomeRounded,
     KeyRounded,
+    LayersRounded,
+    LockOpenRounded,
+    LockRounded,
     MovieCreationRounded,
     PauseRounded,
     PlayArrowRounded,
@@ -42,6 +52,7 @@ import {
     TextFieldsRounded,
     TimelineRounded,
     TuneRounded,
+    VolumeUpRounded,
 } from "@mui/icons-material";
 
 export const primaryPillSx = {
@@ -59,8 +70,9 @@ export const primaryPillSx = {
 };
 
 const panelBorder = "1px solid rgba(255,255,255,0.1)";
+const MIN_CLIP_LENGTH = 0.12;
 
-const NEUTRAL_FILTER_VALUES = {
+const VISUAL_NEUTRAL = {
     brightness: 100,
     contrast: 100,
     saturation: 100,
@@ -74,195 +86,16 @@ const NEUTRAL_FILTER_VALUES = {
     vignette: 0,
 };
 
-const FILTER_PARAMETERS = [
-    {
-        key: "brightness",
-        label: "Brightness",
-        min: 0,
-        max: 250,
-        step: 1,
-        unit: "%",
-        neutral: 100,
-    },
-    {
-        key: "contrast",
-        label: "Contrast",
-        min: 0,
-        max: 250,
-        step: 1,
-        unit: "%",
-        neutral: 100,
-    },
-    {
-        key: "saturation",
-        label: "Saturation",
-        min: 0,
-        max: 300,
-        step: 1,
-        unit: "%",
-        neutral: 100,
-    },
-    {
-        key: "blur",
-        label: "Blur",
-        min: 0,
-        max: 40,
-        step: 0.25,
-        unit: "px",
-        neutral: 0,
-    },
-    {
-        key: "grayscale",
-        label: "Grayscale",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 0,
-    },
-    {
-        key: "sepia",
-        label: "Sepia",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 0,
-    },
-    {
-        key: "hue",
-        label: "Hue Rotate",
-        min: -180,
-        max: 180,
-        step: 1,
-        unit: "°",
-        neutral: 0,
-    },
-    {
-        key: "opacity",
-        label: "Opacity",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 100,
-    },
-    {
-        key: "sharpen",
-        label: "Sharpen",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 0,
-    },
-    {
-        key: "noise",
-        label: "Noise",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 0,
-    },
-    {
-        key: "vignette",
-        label: "Vignette",
-        min: 0,
-        max: 100,
-        step: 1,
-        unit: "%",
-        neutral: 0,
-    },
-];
-
-const EFFECT_PRESETS = {
-    clean: {
-        label: "Clean",
-        values: {
-            ...NEUTRAL_FILTER_VALUES,
-        },
-    },
-    cinematic: {
-        label: "Cinematic",
-        values: {
-            brightness: 96,
-            contrast: 126,
-            saturation: 88,
-            blur: 0,
-            grayscale: 0,
-            sepia: 10,
-            hue: -4,
-            opacity: 100,
-            sharpen: 12,
-            noise: 0,
-            vignette: 38,
-        },
-    },
-    flash: {
-        label: "Flash",
-        values: {
-            brightness: 165,
-            contrast: 120,
-            saturation: 115,
-            blur: 0,
-            grayscale: 0,
-            sepia: 0,
-            hue: 0,
-            opacity: 100,
-            sharpen: 0,
-            noise: 0,
-            vignette: 0,
-        },
-    },
-    dream: {
-        label: "Dream Blur",
-        values: {
-            brightness: 112,
-            contrast: 92,
-            saturation: 132,
-            blur: 5,
-            grayscale: 0,
-            sepia: 6,
-            hue: 8,
-            opacity: 100,
-            sharpen: 0,
-            noise: 0,
-            vignette: 18,
-        },
-    },
-    vintage: {
-        label: "Vintage",
-        values: {
-            brightness: 104,
-            contrast: 112,
-            saturation: 78,
-            blur: 0,
-            grayscale: 8,
-            sepia: 42,
-            hue: -8,
-            opacity: 100,
-            sharpen: 5,
-            noise: 18,
-            vignette: 28,
-        },
-    },
-    fadeOut: {
-        label: "Fade Out",
-        values: {
-            brightness: 100,
-            contrast: 100,
-            saturation: 100,
-            blur: 0,
-            grayscale: 0,
-            sepia: 0,
-            hue: 0,
-            opacity: 0,
-            sharpen: 0,
-            noise: 0,
-            vignette: 0,
-        },
-    },
+const AUDIO_NEUTRAL = {
+    gain: 100,
+    pan: 0,
+    bass: 0,
+    treble: 0,
+    lowpass: 22050,
+    highpass: 0,
+    delayMix: 0,
+    delayTime: 0.24,
+    feedback: 0,
 };
 
 const DEFAULT_BRUSH = {
@@ -276,12 +109,171 @@ const DEFAULT_BRUSH = {
     fadeOut: 0,
 };
 
+const VISUAL_PARAMS = [
+    { key: "brightness", label: "Brightness", min: 0, max: 250, step: 1, unit: "%", neutral: 100 },
+    { key: "contrast", label: "Contrast", min: 0, max: 250, step: 1, unit: "%", neutral: 100 },
+    { key: "saturation", label: "Saturation", min: 0, max: 300, step: 1, unit: "%", neutral: 100 },
+    { key: "blur", label: "Blur", min: 0, max: 40, step: 0.25, unit: "px", neutral: 0 },
+    { key: "grayscale", label: "Grayscale", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+    { key: "sepia", label: "Sepia", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+    { key: "hue", label: "Hue Rotate", min: -180, max: 180, step: 1, unit: "°", neutral: 0 },
+    { key: "opacity", label: "Opacity", min: 0, max: 100, step: 1, unit: "%", neutral: 100 },
+    { key: "sharpen", label: "Sharpen", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+    { key: "noise", label: "Noise", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+    { key: "vignette", label: "Vignette", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+];
+
+const AUDIO_PARAMS = [
+    { key: "gain", label: "Gain", min: 0, max: 200, step: 1, unit: "%", neutral: 100 },
+    { key: "pan", label: "Pan", min: -100, max: 100, step: 1, unit: "", neutral: 0 },
+    { key: "bass", label: "Bass Shelf", min: -30, max: 30, step: 1, unit: "dB", neutral: 0 },
+    { key: "treble", label: "Treble Shelf", min: -30, max: 30, step: 1, unit: "dB", neutral: 0 },
+    { key: "lowpass", label: "Lowpass", min: 250, max: 22050, step: 25, unit: "Hz", neutral: 22050 },
+    { key: "highpass", label: "Highpass", min: 0, max: 9000, step: 25, unit: "Hz", neutral: 0 },
+    { key: "delayMix", label: "Delay Mix", min: 0, max: 100, step: 1, unit: "%", neutral: 0 },
+    { key: "delayTime", label: "Delay Time", min: 0.02, max: 1.2, step: 0.01, unit: "s", neutral: 0.24 },
+    { key: "feedback", label: "Feedback", min: 0, max: 90, step: 1, unit: "%", neutral: 0 },
+];
+
+const VISUAL_PRESETS = {
+    clean: {
+        label: "Clean",
+        values: { ...VISUAL_NEUTRAL },
+    },
+    cinematic: {
+        label: "Cinematic",
+        values: {
+            ...VISUAL_NEUTRAL,
+            brightness: 96,
+            contrast: 126,
+            saturation: 88,
+            sepia: 10,
+            hue: -4,
+            sharpen: 12,
+            vignette: 38,
+        },
+    },
+    flash: {
+        label: "Flash",
+        values: {
+            ...VISUAL_NEUTRAL,
+            brightness: 165,
+            contrast: 120,
+            saturation: 115,
+        },
+    },
+    dream: {
+        label: "Dream Blur",
+        values: {
+            ...VISUAL_NEUTRAL,
+            brightness: 112,
+            contrast: 92,
+            saturation: 132,
+            blur: 5,
+            sepia: 6,
+            hue: 8,
+            vignette: 18,
+        },
+    },
+    vintage: {
+        label: "Vintage",
+        values: {
+            ...VISUAL_NEUTRAL,
+            brightness: 104,
+            contrast: 112,
+            saturation: 78,
+            grayscale: 8,
+            sepia: 42,
+            hue: -8,
+            sharpen: 5,
+            noise: 18,
+            vignette: 28,
+        },
+    },
+    fadeOut: {
+        label: "Fade Out",
+        values: {
+            ...VISUAL_NEUTRAL,
+            opacity: 0,
+        },
+    },
+};
+
+const AUDIO_PRESETS = {
+    normal: {
+        label: "Normal",
+        values: { ...AUDIO_NEUTRAL },
+    },
+    fadeDown: {
+        label: "Fade Down",
+        values: {
+            ...AUDIO_NEUTRAL,
+            gain: 0,
+        },
+    },
+    bassBoost: {
+        label: "Bass Boost",
+        values: {
+            ...AUDIO_NEUTRAL,
+            gain: 110,
+            bass: 12,
+            treble: 2,
+        },
+    },
+    phone: {
+        label: "Phone Voice",
+        values: {
+            ...AUDIO_NEUTRAL,
+            gain: 105,
+            lowpass: 3600,
+            highpass: 500,
+            bass: -10,
+            treble: 7,
+        },
+    },
+    echo: {
+        label: "Echo",
+        values: {
+            ...AUDIO_NEUTRAL,
+            delayMix: 42,
+            delayTime: 0.34,
+            feedback: 38,
+        },
+    },
+    panLeft: {
+        label: "Pan Left",
+        values: {
+            ...AUDIO_NEUTRAL,
+            pan: -70,
+        },
+    },
+    panRight: {
+        label: "Pan Right",
+        values: {
+            ...AUDIO_NEUTRAL,
+            pan: 70,
+        },
+    },
+};
+
 function makeId(prefix) {
     if (typeof crypto !== "undefined" && crypto.randomUUID) {
         return `${prefix}-${crypto.randomUUID()}`;
     }
 
     return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function snapTime(value, snapEnabled, snapStep) {
+    if (!snapEnabled) {
+        return value;
+    }
+
+    return Math.round(value / snapStep) * snapStep;
 }
 
 function formatTime(value) {
@@ -293,18 +285,18 @@ function formatTime(value) {
     return `${minutes}:${String(seconds).padStart(2, "0")}.${tenths}`;
 }
 
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
-
 function lerp(start, end, amount) {
     return start + (end - start) * amount;
 }
 
-function interpolateValues(a, b, amount) {
-    const output = {};
+function sortKeyframes(keyframes) {
+    return [...(keyframes || [])].sort((a, b) => a.time - b.time);
+}
 
-    FILTER_PARAMETERS.forEach((param) => {
+function interpolateValues(paramDefs, neutral, a, b, amount) {
+    const output = { ...neutral };
+
+    paramDefs.forEach((param) => {
         output[param.key] = lerp(
             Number(a?.[param.key] ?? param.neutral),
             Number(b?.[param.key] ?? param.neutral),
@@ -315,29 +307,19 @@ function interpolateValues(a, b, amount) {
     return output;
 }
 
-function sortKeyframes(keyframes) {
-    return [...keyframes].sort((a, b) => a.time - b.time);
-}
-
-function evaluateKeyframes(keyframes, time) {
+function evaluateKeyframes(paramDefs, neutral, keyframes, time) {
     const sorted = sortKeyframes(keyframes);
 
     if (!sorted.length) {
-        return { ...NEUTRAL_FILTER_VALUES };
+        return { ...neutral };
     }
 
     if (time <= sorted[0].time) {
-        return {
-            ...NEUTRAL_FILTER_VALUES,
-            ...sorted[0].values,
-        };
+        return { ...neutral, ...sorted[0].values };
     }
 
     if (time >= sorted[sorted.length - 1].time) {
-        return {
-            ...NEUTRAL_FILTER_VALUES,
-            ...sorted[sorted.length - 1].values,
-        };
+        return { ...neutral, ...sorted[sorted.length - 1].values };
     }
 
     for (let index = 0; index < sorted.length - 1; index += 1) {
@@ -348,21 +330,21 @@ function evaluateKeyframes(keyframes, time) {
             const span = Math.max(0.001, next.time - current.time);
             const amount = clamp((time - current.time) / span, 0, 1);
 
-            return interpolateValues(current.values, next.values, amount);
+            return interpolateValues(paramDefs, neutral, current.values, next.values, amount);
         }
     }
 
-    return { ...NEUTRAL_FILTER_VALUES };
+    return { ...neutral };
 }
 
-function combineActiveEffects(effectClips, time) {
-    const combined = { ...NEUTRAL_FILTER_VALUES };
+function combineVisualClips(clips, time) {
+    const combined = { ...VISUAL_NEUTRAL };
 
-    effectClips
+    clips
         .filter((clip) => clip.enabled !== false)
         .filter((clip) => time >= clip.start && time <= clip.end)
         .forEach((clip) => {
-            const values = evaluateKeyframes(clip.keyframes, time);
+            const values = evaluateKeyframes(VISUAL_PARAMS, VISUAL_NEUTRAL, clip.keyframes, time);
 
             combined.brightness += values.brightness - 100;
             combined.contrast += values.contrast - 100;
@@ -392,6 +374,39 @@ function combineActiveEffects(effectClips, time) {
     };
 }
 
+function combineAudioClips(clips, time) {
+    const combined = { ...AUDIO_NEUTRAL };
+
+    clips
+        .filter((clip) => clip.enabled !== false)
+        .filter((clip) => time >= clip.start && time <= clip.end)
+        .forEach((clip) => {
+            const values = evaluateKeyframes(AUDIO_PARAMS, AUDIO_NEUTRAL, clip.keyframes, time);
+
+            combined.gain += values.gain - 100;
+            combined.pan += values.pan;
+            combined.bass += values.bass;
+            combined.treble += values.treble;
+            combined.lowpass = Math.min(combined.lowpass, values.lowpass);
+            combined.highpass = Math.max(combined.highpass, values.highpass);
+            combined.delayMix = Math.max(combined.delayMix, values.delayMix);
+            combined.delayTime = values.delayMix > 0 ? values.delayTime : combined.delayTime;
+            combined.feedback = Math.max(combined.feedback, values.feedback);
+        });
+
+    return {
+        gain: clamp(combined.gain, 0, 200),
+        pan: clamp(combined.pan, -100, 100),
+        bass: clamp(combined.bass, -30, 30),
+        treble: clamp(combined.treble, -30, 30),
+        lowpass: clamp(combined.lowpass, 250, 22050),
+        highpass: clamp(combined.highpass, 0, 9000),
+        delayMix: clamp(combined.delayMix, 0, 100),
+        delayTime: clamp(combined.delayTime, 0.02, 1.2),
+        feedback: clamp(combined.feedback, 0, 90),
+    };
+}
+
 function filterString(values) {
     return [
         `brightness(${values.brightness}%)`,
@@ -403,6 +418,20 @@ function filterString(values) {
         `hue-rotate(${values.hue}deg)`,
         `opacity(${values.opacity}%)`,
     ].join(" ");
+}
+
+function hexToRgba(hex, alphaValue) {
+    const cleaned = String(hex || "#ffffff").replace("#", "");
+    const normalized = cleaned.length === 3
+        ? cleaned.split("").map((char) => char + char).join("")
+        : cleaned;
+
+    const bigint = parseInt(normalized, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+
+    return `rgba(${r}, ${g}, ${b}, ${alphaValue})`;
 }
 
 function drawVignette(ctx, width, height, amount) {
@@ -467,19 +496,6 @@ function drawSharpen(ctx, width, height, amount) {
     ctx.restore();
 }
 
-function hexToRgba(hex, alphaValue) {
-    const cleaned = String(hex || "#ffffff").replace("#", "");
-    const bigint = parseInt(cleaned.length === 3
-        ? cleaned.split("").map((char) => char + char).join("")
-        : cleaned, 16);
-
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-
-    return `rgba(${r}, ${g}, ${b}, ${alphaValue})`;
-}
-
 function clipFadeAmount(clip, time) {
     let alphaAmount = 1;
 
@@ -505,11 +521,7 @@ function drawDrawingClips(ctx, drawingClips, time, width, height) {
         .filter((clip) => clip.enabled !== false)
         .filter((clip) => time >= clip.start && time <= clip.end)
         .forEach((clip) => {
-            const brush = {
-                ...DEFAULT_BRUSH,
-                ...clip.brush,
-            };
-
+            const brush = { ...DEFAULT_BRUSH, ...clip.brush };
             const localTime = time - clip.start;
             const opacity = clamp((brush.opacity / 100) * clipFadeAmount(clip, time), 0, 1);
 
@@ -543,13 +555,8 @@ function drawDrawingClips(ctx, drawingClips, time, width, height) {
                     const previous = sourcePoints[index - 1];
                     const current = sourcePoints[index];
 
-                    const previousPressure = brush.usePressure
-                        ? clamp(previous.pressure || 0.5, 0.12, 1)
-                        : 1;
-                    const currentPressure = brush.usePressure
-                        ? clamp(current.pressure || 0.5, 0.12, 1)
-                        : 1;
-
+                    const previousPressure = brush.usePressure ? clamp(previous.pressure || 0.5, 0.12, 1) : 1;
+                    const currentPressure = brush.usePressure ? clamp(current.pressure || 0.5, 0.12, 1) : 1;
                     const lineWidth = brush.size * ((previousPressure + currentPressure) / 2);
 
                     ctx.strokeStyle = hexToRgba(stroke.color || brush.color, opacity);
@@ -693,7 +700,7 @@ export function AppNavBar() {
                                     fontWeight: 700,
                                 }}
                             >
-                                Timeline Drawing Editor
+                                Canvas Timeline Editor
                             </Typography>
                         </Box>
                     </Stack>
@@ -983,22 +990,812 @@ export function FeatureCard({ icon, title, description }) {
     );
 }
 
+function SupportChip({ good, label }) {
+    return (
+        <Chip
+            label={label}
+            sx={{
+                color: good ? "#9ee8ff" : "#ffb4b4",
+                fontWeight: 850,
+                backgroundColor: good ? "rgba(158,232,255,0.1)" : "rgba(255,100,100,0.1)",
+                border: good ? "1px solid rgba(158,232,255,0.25)" : "1px solid rgba(255,100,100,0.22)",
+            }}
+        />
+    );
+}
+
+function EditorSlider({ label, value, min, max, step, display, color = "#9ee8ff", onChange }) {
+    return (
+        <Box>
+            <Stack direction="row" justifyContent="space-between" spacing={1}>
+                <Typography sx={{ fontWeight: 850, fontSize: 13 }}>
+                    {label}
+                </Typography>
+                <Typography sx={{ color, fontWeight: 950, fontSize: 13 }}>
+                    {display}
+                </Typography>
+            </Stack>
+
+            <Slider
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(_, nextValue) => onChange(Number(nextValue))}
+                sx={{
+                    color,
+                    "& .MuiSlider-thumb": {
+                        width: 16,
+                        height: 16,
+                    },
+                }}
+            />
+        </Box>
+    );
+}
+
+const smallTextFieldSx = {
+    "& label": {
+        color: "rgba(255,255,255,0.62)",
+    },
+    "& label.Mui-focused": {
+        color: "#9ee8ff",
+    },
+    "& .MuiOutlinedInput-root": {
+        color: "white",
+        borderRadius: 3,
+        backgroundColor: "rgba(255,255,255,0.055)",
+        "& fieldset": {
+            borderColor: "rgba(255,255,255,0.12)",
+        },
+        "&:hover fieldset": {
+            borderColor: "rgba(158,232,255,0.45)",
+        },
+        "&.Mui-focused fieldset": {
+            borderColor: "#9ee8ff",
+        },
+    },
+};
+
+const miniControlSx = {
+    borderRadius: 999,
+    color: "white",
+    fontWeight: 900,
+    border: "1px solid rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    "&:hover": {
+        backgroundColor: "rgba(255,255,255,0.08)",
+    },
+};
+
+function TransportControls({
+                               videoUrl,
+                               isPlaying,
+                               isExporting,
+                               duration,
+                               currentTime,
+                               trimStart,
+                               trimEnd,
+                               onPlayPause,
+                               onRestart,
+                               onSeek,
+                               onTrimStartChange,
+                               onTrimEndChange,
+                           }) {
+    return (
+        <GlassCard sx={{ p: 1.5, backgroundColor: "rgba(0,0,0,0.18)" }}>
+            <Stack spacing={1.25}>
+                <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    spacing={1.25}
+                    alignItems={{ xs: "stretch", md: "center" }}
+                >
+                    <Stack direction="row" spacing={1}>
+                        <Button
+                            disabled={!videoUrl || isExporting}
+                            onClick={onPlayPause}
+                            startIcon={isPlaying ? <PauseRounded /> : <PlayArrowRounded />}
+                            variant="contained"
+                            sx={primaryPillSx}
+                        >
+                            {isPlaying ? "Pause" : "Play"}
+                        </Button>
+
+                        <Button
+                            disabled={!videoUrl || isExporting}
+                            onClick={onRestart}
+                            startIcon={<RestartAltRounded />}
+                            sx={miniControlSx}
+                        >
+                            Restart
+                        </Button>
+                    </Stack>
+
+                    <Box sx={{ flex: 1 }}>
+                        <Slider
+                            disabled={!videoUrl || isExporting}
+                            min={trimStart}
+                            max={trimEnd || duration || 1}
+                            value={clamp(currentTime, trimStart, trimEnd || duration || 1)}
+                            step={0.01}
+                            onChange={(_, value) => onSeek(Number(value))}
+                            sx={{
+                                color: "#9ee8ff",
+                                "& .MuiSlider-thumb": {
+                                    boxShadow: "0 0 0 8px rgba(158,232,255,0.12)",
+                                },
+                            }}
+                        />
+                    </Box>
+
+                    <Typography sx={{ minWidth: 145, fontWeight: 900, color: "rgba(255,255,255,0.78)" }}>
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                    </Typography>
+                </Stack>
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+                    <TextField
+                        label="Trim Start"
+                        type="number"
+                        size="small"
+                        value={Number(trimStart.toFixed(2))}
+                        onChange={(event) => onTrimStartChange(Number(event.target.value))}
+                        inputProps={{ min: 0, max: trimEnd, step: 0.05 }}
+                        sx={smallTextFieldSx}
+                    />
+                    <TextField
+                        label="Trim End"
+                        type="number"
+                        size="small"
+                        value={Number(trimEnd.toFixed(2))}
+                        onChange={(event) => onTrimEndChange(Number(event.target.value))}
+                        inputProps={{ min: trimStart, max: duration, step: 0.05 }}
+                        sx={smallTextFieldSx}
+                    />
+                    <Typography sx={{ color: "rgba(255,255,255,0.52)", alignSelf: "center", fontSize: 13 }}>
+                        Drag boxes in the timeline to move clips. Use left/right handles to resize them.
+                    </Typography>
+                </Stack>
+            </Stack>
+        </GlassCard>
+    );
+}
+
+function TimelineView({
+                          duration,
+                          currentTime,
+                          trimStart,
+                          trimEnd,
+                          visualClips,
+                          audioClips,
+                          drawingClips,
+                          selectedKind,
+                          selectedClipId,
+                          selectedKeyframeId,
+                          snapEnabled,
+                          snapStep,
+                          zoom,
+                          markers,
+                          onSeek,
+                          onSelectClip,
+                          onSelectKeyframe,
+                          onUpdateClipTiming,
+                          onUpdateKeyframeTime,
+                          onDeleteMarker,
+                      }) {
+    const safeDuration = Math.max(duration || 0, 0.01);
+    const timelineWidthPercent = Math.max(100, zoom * 100);
+    const playheadLeft = clamp((currentTime / safeDuration) * timelineWidthPercent, 0, timelineWidthPercent);
+    const trimStartLeft = clamp((trimStart / safeDuration) * timelineWidthPercent, 0, timelineWidthPercent);
+    const trimEndLeft = clamp((trimEnd / safeDuration) * timelineWidthPercent, 0, timelineWidthPercent);
+
+    const tracks = [
+        {
+            kind: "visual",
+            label: "Video FX",
+            icon: <TuneRounded fontSize="small" />,
+            color: "#9ee8ff",
+            clips: visualClips,
+        },
+        {
+            kind: "audio",
+            label: "Audio FX",
+            icon: <GraphicEqRounded fontSize="small" />,
+            color: "#7ef4b6",
+            clips: audioClips,
+        },
+        {
+            kind: "draw",
+            label: "Drawing",
+            icon: <BrushRounded fontSize="small" />,
+            color: "#b38cff",
+            clips: drawingClips,
+        },
+    ];
+
+    const beginClipDrag = (event, kind, clip, mode) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (clip.locked) {
+            return;
+        }
+
+        const track = event.currentTarget.closest("[data-timeline-track='true']");
+        if (!track || !duration) {
+            return;
+        }
+
+        onSelectClip(kind, clip.id);
+
+        const rect = track.getBoundingClientRect();
+        const startX = event.clientX;
+        const originalStart = clip.start;
+        const originalEnd = clip.end;
+        const originalLength = originalEnd - originalStart;
+
+        const onMove = (moveEvent) => {
+            const deltaSeconds = ((moveEvent.clientX - startX) / rect.width) * duration * zoom;
+            let nextStart = originalStart;
+            let nextEnd = originalEnd;
+            let shiftDelta = 0;
+
+            if (mode === "move") {
+                nextStart = clamp(
+                    snapTime(originalStart + deltaSeconds, snapEnabled, snapStep),
+                    trimStart,
+                    Math.max(trimStart, trimEnd - originalLength)
+                );
+                nextEnd = nextStart + originalLength;
+                shiftDelta = nextStart - originalStart;
+            }
+
+            if (mode === "start") {
+                nextStart = clamp(
+                    snapTime(originalStart + deltaSeconds, snapEnabled, snapStep),
+                    trimStart,
+                    originalEnd - MIN_CLIP_LENGTH
+                );
+            }
+
+            if (mode === "end") {
+                nextEnd = clamp(
+                    snapTime(originalEnd + deltaSeconds, snapEnabled, snapStep),
+                    originalStart + MIN_CLIP_LENGTH,
+                    trimEnd
+                );
+            }
+
+            onUpdateClipTiming(kind, clip.id, nextStart, nextEnd, { shiftDelta });
+        };
+
+        const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+    };
+
+    const beginKeyframeDrag = (event, kind, clip, keyframe) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (clip.locked) {
+            return;
+        }
+
+        const track = event.currentTarget.closest("[data-timeline-track='true']");
+        if (!track || !duration) {
+            return;
+        }
+
+        onSelectClip(kind, clip.id);
+        onSelectKeyframe(keyframe.id);
+
+        const rect = track.getBoundingClientRect();
+        const startX = event.clientX;
+        const originalTime = keyframe.time;
+
+        const onMove = (moveEvent) => {
+            const deltaSeconds = ((moveEvent.clientX - startX) / rect.width) * duration * zoom;
+            const nextTime = clamp(
+                snapTime(originalTime + deltaSeconds, snapEnabled, snapStep),
+                clip.start,
+                clip.end
+            );
+
+            onUpdateKeyframeTime(kind, clip.id, keyframe.id, nextTime);
+        };
+
+        const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+    };
+
+    const handleTrackSeek = (event) => {
+        if (!duration) {
+            return;
+        }
+
+        const rect = event.currentTarget.getBoundingClientRect();
+        const nextTime = clamp(((event.clientX - rect.left) / rect.width) * duration * zoom, trimStart, trimEnd);
+
+        onSeek(nextTime);
+    };
+
+    return (
+        <GlassCard sx={{ p: 1.5, backgroundColor: "rgba(0,0,0,0.2)" }}>
+            <Stack spacing={1.25}>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        <TimelineRounded sx={{ color: "#9ee8ff" }} />
+                        <Typography sx={{ fontWeight: 950 }}>
+                            Timeline Clips
+                        </Typography>
+                    </Stack>
+
+                    <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
+                        Move center. Resize with arrows. Drag keyframe diamonds.
+                    </Typography>
+                </Stack>
+
+                <Box sx={{ overflowX: "auto", pb: 1 }}>
+                    <Box
+                        sx={{
+                            minWidth: `${timelineWidthPercent}%`,
+                            display: "grid",
+                            gridTemplateColumns: { xs: "92px 1fr", sm: "120px 1fr" },
+                            gap: 1,
+                            position: "relative",
+                        }}
+                    >
+                        <Box />
+
+                        <Box
+                            onPointerDown={handleTrackSeek}
+                            sx={{
+                                position: "relative",
+                                height: 34,
+                                borderRadius: 2.5,
+                                backgroundColor: "rgba(255,255,255,0.055)",
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                overflow: "hidden",
+                                cursor: "pointer",
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    position: "absolute",
+                                    top: 0,
+                                    bottom: 0,
+                                    left: `${trimStartLeft / timelineWidthPercent * 100}%`,
+                                    width: `${Math.max(0, trimEndLeft - trimStartLeft) / timelineWidthPercent * 100}%`,
+                                    backgroundColor: "rgba(158,232,255,0.08)",
+                                }}
+                            />
+
+                            {[0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1].map((amount) => (
+                                <Box
+                                    key={amount}
+                                    sx={{
+                                        position: "absolute",
+                                        left: `${amount * 100}%`,
+                                        top: 0,
+                                        bottom: 0,
+                                        borderLeft: "1px solid rgba(255,255,255,0.1)",
+                                    }}
+                                >
+                                    <Typography
+                                        sx={{
+                                            ml: 0.75,
+                                            mt: 0.65,
+                                            color: "rgba(255,255,255,0.5)",
+                                            fontSize: 11,
+                                            fontWeight: 800,
+                                        }}
+                                    >
+                                        {formatTime(duration * amount)}
+                                    </Typography>
+                                </Box>
+                            ))}
+
+                            {markers.map((marker) => {
+                                const left = clamp((marker.time / safeDuration) * 100, 0, 100);
+
+                                return (
+                                    <Tooltip key={marker.id} title={`${marker.label} ${formatTime(marker.time)}`}>
+                                        <Box
+                                            onPointerDown={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                onSeek(marker.time);
+                                            }}
+                                            onDoubleClick={() => onDeleteMarker(marker.id)}
+                                            sx={{
+                                                position: "absolute",
+                                                left: `${left}%`,
+                                                top: 3,
+                                                width: 10,
+                                                height: 28,
+                                                borderRadius: 1,
+                                                background: "linear-gradient(180deg, #ffffff, #ffc76b)",
+                                                boxShadow: "0 0 15px rgba(255,199,107,0.45)",
+                                                cursor: "pointer",
+                                            }}
+                                        />
+                                    </Tooltip>
+                                );
+                            })}
+                        </Box>
+
+                        {tracks.map((track) => (
+                            <React.Fragment key={track.kind}>
+                                <Stack
+                                    direction="row"
+                                    spacing={0.75}
+                                    alignItems="center"
+                                    sx={{
+                                        minHeight: 58,
+                                        px: 1,
+                                        borderRadius: 3,
+                                        backgroundColor: "rgba(255,255,255,0.045)",
+                                        border: "1px solid rgba(255,255,255,0.07)",
+                                    }}
+                                >
+                                    <Box sx={{ color: track.color, display: "flex" }}>
+                                        {track.icon}
+                                    </Box>
+                                    <Typography sx={{ fontWeight: 900, fontSize: 13 }}>
+                                        {track.label}
+                                    </Typography>
+                                </Stack>
+
+                                <Box
+                                    data-timeline-track="true"
+                                    onPointerDown={handleTrackSeek}
+                                    sx={{
+                                        position: "relative",
+                                        minHeight: 58,
+                                        borderRadius: 3,
+                                        backgroundColor: "rgba(255,255,255,0.04)",
+                                        border: "1px solid rgba(255,255,255,0.08)",
+                                        overflow: "hidden",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            position: "absolute",
+                                            top: 0,
+                                            bottom: 0,
+                                            left: `${trimStartLeft / timelineWidthPercent * 100}%`,
+                                            width: `${Math.max(0, trimEndLeft - trimStartLeft) / timelineWidthPercent * 100}%`,
+                                            backgroundColor: "rgba(255,255,255,0.035)",
+                                        }}
+                                    />
+
+                                    {track.clips.map((clip) => {
+                                        const left = clamp((clip.start / safeDuration) * 100, 0, 100);
+                                        const width = clamp(((clip.end - clip.start) / safeDuration) * 100, 0, 100);
+                                        const selected = selectedKind === track.kind && selectedClipId === clip.id;
+
+                                        return (
+                                            <Box
+                                                key={clip.id}
+                                                onPointerDown={(event) => beginClipDrag(event, track.kind, clip, "move")}
+                                                sx={{
+                                                    position: "absolute",
+                                                    top: 7,
+                                                    bottom: 7,
+                                                    left: `${left}%`,
+                                                    width: `${Math.max(width, 1.25)}%`,
+                                                    minWidth: 48,
+                                                    borderRadius: 2.4,
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    overflow: "hidden",
+                                                    cursor: clip.locked ? "not-allowed" : "grab",
+                                                    color: "#07111f",
+                                                    opacity: clip.enabled === false ? 0.46 : 1,
+                                                    background: selected
+                                                        ? `linear-gradient(135deg, ${track.color}, #ffffff)`
+                                                        : `linear-gradient(135deg, ${alpha(track.color, 0.9)}, ${alpha(track.color, 0.55)})`,
+                                                    border: selected
+                                                        ? "2px solid rgba(255,255,255,0.95)"
+                                                        : "1px solid rgba(255,255,255,0.45)",
+                                                    boxShadow: selected
+                                                        ? `0 0 0 4px ${alpha(track.color, 0.16)}`
+                                                        : "none",
+                                                }}
+                                            >
+                                                <IconButton
+                                                    size="small"
+                                                    disabled={clip.locked}
+                                                    onPointerDown={(event) => beginClipDrag(event, track.kind, clip, "start")}
+                                                    sx={timelineHandleSx}
+                                                >
+                                                    <ChevronLeftRounded fontSize="small" />
+                                                </IconButton>
+
+                                                <Stack
+                                                    direction="row"
+                                                    spacing={0.5}
+                                                    alignItems="center"
+                                                    sx={{
+                                                        minWidth: 0,
+                                                        flex: 1,
+                                                        px: 0.75,
+                                                    }}
+                                                >
+                                                    {clip.locked ? <LockRounded fontSize="small" /> : <DragIndicatorRounded fontSize="small" />}
+                                                    <Box sx={{ minWidth: 0 }}>
+                                                        <Typography
+                                                            noWrap
+                                                            sx={{
+                                                                fontSize: 12,
+                                                                fontWeight: 950,
+                                                                lineHeight: 1.1,
+                                                            }}
+                                                        >
+                                                            {clip.label}
+                                                        </Typography>
+                                                        <Typography
+                                                            noWrap
+                                                            sx={{
+                                                                fontSize: 10.5,
+                                                                fontWeight: 850,
+                                                                opacity: 0.75,
+                                                            }}
+                                                        >
+                                                            {formatTime(clip.start)} → {formatTime(clip.end)}
+                                                        </Typography>
+                                                    </Box>
+                                                </Stack>
+
+                                                <IconButton
+                                                    size="small"
+                                                    disabled={clip.locked}
+                                                    onPointerDown={(event) => beginClipDrag(event, track.kind, clip, "end")}
+                                                    sx={timelineHandleSx}
+                                                >
+                                                    <ChevronRightRounded fontSize="small" />
+                                                </IconButton>
+                                            </Box>
+                                        );
+                                    })}
+
+                                    {track.clips
+                                        .filter((clip) => selectedKind === track.kind && clip.id === selectedClipId)
+                                        .flatMap((clip) =>
+                                            (clip.keyframes || []).map((keyframe) => ({
+                                                clip,
+                                                keyframe,
+                                            }))
+                                        )
+                                        .map(({ clip, keyframe }) => {
+                                            const left = clamp((keyframe.time / safeDuration) * 100, 0, 100);
+                                            const active = keyframe.id === selectedKeyframeId;
+
+                                            return (
+                                                <Tooltip key={keyframe.id} title={`Keyframe ${formatTime(keyframe.time)}`}>
+                                                    <Box
+                                                        onPointerDown={(event) => beginKeyframeDrag(event, track.kind, clip, keyframe)}
+                                                        sx={{
+                                                            position: "absolute",
+                                                            left: `${left}%`,
+                                                            top: 1,
+                                                            width: 15,
+                                                            height: 15,
+                                                            transform: "translateX(-50%) rotate(45deg)",
+                                                            borderRadius: 0.75,
+                                                            backgroundColor: active ? "#ffffff" : track.color,
+                                                            border: "2px solid rgba(0,0,0,0.45)",
+                                                            cursor: clip.locked ? "not-allowed" : "grab",
+                                                            zIndex: 7,
+                                                        }}
+                                                    />
+                                                </Tooltip>
+                                            );
+                                        })}
+                                </Box>
+                            </React.Fragment>
+                        ))}
+
+                        <Box
+                            sx={{
+                                position: "absolute",
+                                top: 36,
+                                bottom: 0,
+                                left: `calc(120px + ${playheadLeft / timelineWidthPercent * 100}%)`,
+                                width: 2,
+                                backgroundColor: "#ffffff",
+                                boxShadow: "0 0 18px rgba(255,255,255,0.85)",
+                                pointerEvents: "none",
+                                display: { xs: "none", sm: "block" },
+                                zIndex: 10,
+                            }}
+                        />
+                    </Box>
+                </Box>
+            </Stack>
+        </GlassCard>
+    );
+}
+
+const timelineHandleSx = {
+    width: 26,
+    height: "100%",
+    borderRadius: 0,
+    color: "#07111f",
+    backgroundColor: "rgba(255,255,255,0.25)",
+    "&:hover": {
+        backgroundColor: "rgba(255,255,255,0.45)",
+    },
+    "&.Mui-disabled": {
+        color: "rgba(0,0,0,0.35)",
+    },
+};
+
+function ParameterEditor({
+                             title,
+                             icon,
+                             clip,
+                             keyframe,
+                             paramDefs,
+                             presets,
+                             color,
+                             onAddKeyframe,
+                             onDeleteKeyframe,
+                             onUpdateKeyframeTime,
+                             onUpdateParam,
+                             onApplyPreset,
+                         }) {
+    if (!clip || !keyframe) {
+        return (
+            <GlassCard>
+                <Stack spacing={1}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        {icon}
+                        <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                            {title}
+                        </Typography>
+                    </Stack>
+                    <Typography sx={{ color: "rgba(255,255,255,0.58)", lineHeight: 1.7 }}>
+                        Select a video FX clip or audio FX clip to edit keyframes and parameters.
+                    </Typography>
+                </Stack>
+            </GlassCard>
+        );
+    }
+
+    return (
+        <GlassCard>
+            <Stack spacing={2}>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        {icon}
+                        <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                                {title}
+                            </Typography>
+                            <Typography sx={{ color: "rgba(255,255,255,0.56)", fontSize: 13 }}>
+                                Editing {clip.label}
+                            </Typography>
+                        </Box>
+                    </Stack>
+
+                    <Button
+                        size="small"
+                        onClick={onAddKeyframe}
+                        disabled={clip.locked}
+                        startIcon={<KeyRounded />}
+                        sx={{
+                            borderRadius: 999,
+                            color,
+                            fontWeight: 900,
+                            border: `1px solid ${alpha(color, 0.32)}`,
+                        }}
+                    >
+                        Add Keyframe
+                    </Button>
+                </Stack>
+
+                <Stack direction="row" useFlexGap flexWrap="wrap" spacing={1}>
+                    {Object.entries(presets).map(([presetName, preset]) => (
+                        <Chip
+                            key={presetName}
+                            label={preset.label}
+                            onClick={() => !clip.locked && onApplyPreset(presetName)}
+                            sx={{
+                                color: "white",
+                                fontWeight: 850,
+                                backgroundColor: "rgba(255,255,255,0.08)",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                opacity: clip.locked ? 0.55 : 1,
+                                "&:hover": {
+                                    backgroundColor: alpha(color, 0.14),
+                                },
+                            }}
+                        />
+                    ))}
+                </Stack>
+
+                <TextField
+                    label="Selected Keyframe Time"
+                    type="number"
+                    size="small"
+                    disabled={clip.locked}
+                    value={Number(keyframe.time.toFixed(2))}
+                    onChange={(event) => onUpdateKeyframeTime(Number(event.target.value))}
+                    inputProps={{ min: clip.start, max: clip.end, step: 0.05 }}
+                    sx={smallTextFieldSx}
+                />
+
+                <Stack spacing={1.25}>
+                    {paramDefs.map((param) => (
+                        <EditorSlider
+                            key={param.key}
+                            label={param.label}
+                            min={param.min}
+                            max={param.max}
+                            step={param.step}
+                            color={color}
+                            value={Number(keyframe.values?.[param.key] ?? param.neutral)}
+                            display={`${Number(keyframe.values?.[param.key] ?? param.neutral).toFixed(param.step < 1 ? 2 : 0)}${param.unit}`}
+                            onChange={(value) => {
+                                if (!clip.locked) {
+                                    onUpdateParam(param.key, value);
+                                }
+                            }}
+                        />
+                    ))}
+                </Stack>
+
+                <Button
+                    color="error"
+                    disabled={clip.locked}
+                    onClick={onDeleteKeyframe}
+                    startIcon={<DeleteRounded />}
+                    sx={{
+                        borderRadius: 999,
+                        fontWeight: 900,
+                        alignSelf: "flex-start",
+                    }}
+                >
+                    Delete Selected Keyframe
+                </Button>
+            </Stack>
+        </GlassCard>
+    );
+}
+
 export function BrowserVideoEditor() {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const previewRef = useRef(null);
     const animationFrameRef = useRef(null);
-    const isExportingRef = useRef(false);
     const selectedTextIdRef = useRef(null);
-    const downloadUrlRef = useRef(null);
-    const dragTextIdRef = useRef(null);
     const drawingStrokeRef = useRef(null);
+    const dragTextIdRef = useRef(null);
+    const downloadUrlRef = useRef("");
+    const isExportingRef = useRef(false);
+
+    const audioContextRef = useRef(null);
+    const audioSourceRef = useRef(null);
+    const audioNodesRef = useRef(null);
 
     const [videoUrl, setVideoUrl] = useState("");
     const [fileName, setFileName] = useState("");
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
-    const [range, setRange] = useState([0, 0]);
+    const [trimStart, setTrimStart] = useState(0);
+    const [trimEnd, setTrimEnd] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [status, setStatus] = useState("Upload a video to start editing.");
@@ -1007,48 +1804,72 @@ export function BrowserVideoEditor() {
 
     const [volume, setVolume] = useState(1);
     const [speed, setSpeed] = useState(1);
+    const [exportFps, setExportFps] = useState(30);
+    const [timelineZoom, setTimelineZoom] = useState(1);
+    const [snapEnabled, setSnapEnabled] = useState(true);
+    const [snapStep, setSnapStep] = useState(0.05);
 
     const [textBoxes, setTextBoxes] = useState([]);
+    const [visualClips, setVisualClips] = useState([]);
+    const [audioClips, setAudioClips] = useState([]);
+    const [drawingClips, setDrawingClips] = useState([]);
+    const [markers, setMarkers] = useState([]);
+
+    const [selectedKind, setSelectedKind] = useState(null);
+    const [selectedClipId, setSelectedClipId] = useState(null);
+    const [selectedKeyframeId, setSelectedKeyframeId] = useState(null);
     const [selectedTextId, setSelectedTextId] = useState(null);
 
-    const [effectClips, setEffectClips] = useState([]);
-    const [selectedEffectId, setSelectedEffectId] = useState(null);
-    const [selectedKeyframeId, setSelectedKeyframeId] = useState(null);
-
-    const [drawingClips, setDrawingClips] = useState([]);
-    const [selectedDrawingClipId, setSelectedDrawingClipId] = useState(null);
     const [drawingMode, setDrawingMode] = useState(false);
     const [brush, setBrush] = useState({ ...DEFAULT_BRUSH });
 
-    const trimStart = range[0] || 0;
-    const trimEnd = range[1] || duration || 0;
+    const [audioMeter, setAudioMeter] = useState(0);
+
+    const selectedVisualClip = useMemo(
+        () => visualClips.find((clip) => clip.id === selectedClipId && selectedKind === "visual") || null,
+        [visualClips, selectedClipId, selectedKind]
+    );
+
+    const selectedAudioClip = useMemo(
+        () => audioClips.find((clip) => clip.id === selectedClipId && selectedKind === "audio") || null,
+        [audioClips, selectedClipId, selectedKind]
+    );
+
+    const selectedDrawingClip = useMemo(
+        () => drawingClips.find((clip) => clip.id === selectedClipId && selectedKind === "draw") || null,
+        [drawingClips, selectedClipId, selectedKind]
+    );
+
+    const selectedClip = selectedVisualClip || selectedAudioClip || selectedDrawingClip;
 
     const selectedText = useMemo(
         () => textBoxes.find((box) => box.id === selectedTextId) || null,
         [textBoxes, selectedTextId]
     );
 
-    const selectedEffect = useMemo(
-        () => effectClips.find((clip) => clip.id === selectedEffectId) || null,
-        [effectClips, selectedEffectId]
-    );
+    const selectedParamClip = selectedVisualClip || selectedAudioClip;
+    const selectedParamType = selectedVisualClip ? "visual" : selectedAudioClip ? "audio" : null;
+    const selectedParamDefs = selectedParamType === "audio" ? AUDIO_PARAMS : VISUAL_PARAMS;
+    const selectedPresets = selectedParamType === "audio" ? AUDIO_PRESETS : VISUAL_PRESETS;
+    const selectedNeutral = selectedParamType === "audio" ? AUDIO_NEUTRAL : VISUAL_NEUTRAL;
+    const selectedParamColor = selectedParamType === "audio" ? "#7ef4b6" : "#9ee8ff";
 
     const selectedKeyframe = useMemo(() => {
-        if (!selectedEffect) {
+        if (!selectedParamClip) {
             return null;
         }
 
-        return selectedEffect.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) || null;
-    }, [selectedEffect, selectedKeyframeId]);
+        return selectedParamClip.keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) || selectedParamClip.keyframes[0] || null;
+    }, [selectedParamClip, selectedKeyframeId]);
 
-    const selectedDrawingClip = useMemo(
-        () => drawingClips.find((clip) => clip.id === selectedDrawingClipId) || null,
-        [drawingClips, selectedDrawingClipId]
+    const activeVisualValues = useMemo(
+        () => combineVisualClips(visualClips, currentTime),
+        [visualClips, currentTime]
     );
 
-    const activeValues = useMemo(
-        () => combineActiveEffects(effectClips, currentTime),
-        [effectClips, currentTime]
+    const activeAudioValues = useMemo(
+        () => combineAudioClips(audioClips, currentTime),
+        [audioClips, currentTime]
     );
 
     const support = useMemo(() => {
@@ -1057,7 +1878,7 @@ export function BrowserVideoEditor() {
                 mediaRecorder: false,
                 canvasCapture: false,
                 pointerEvents: false,
-                pressure: false,
+                webAudio: false,
             };
         }
 
@@ -1065,7 +1886,7 @@ export function BrowserVideoEditor() {
             mediaRecorder: "MediaRecorder" in window,
             canvasCapture: Boolean(window.HTMLCanvasElement?.prototype?.captureStream),
             pointerEvents: "PointerEvent" in window,
-            pressure: "PointerEvent" in window,
+            webAudio: Boolean(window.AudioContext || window.webkitAudioContext),
         };
     }, []);
 
@@ -1090,6 +1911,10 @@ export function BrowserVideoEditor() {
             if (downloadUrlRef.current) {
                 URL.revokeObjectURL(downloadUrlRef.current);
             }
+
+            if (audioContextRef.current) {
+                audioContextRef.current.close?.();
+            }
         };
     }, [videoUrl]);
 
@@ -1113,7 +1938,7 @@ export function BrowserVideoEditor() {
         }
 
         const frameTime = video.currentTime || 0;
-        const values = combineActiveEffects(effectClips, frameTime);
+        const values = combineVisualClips(visualClips, frameTime);
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1125,19 +1950,148 @@ export function BrowserVideoEditor() {
         drawSharpen(ctx, canvas.width, canvas.height, values.sharpen);
         drawNoise(ctx, canvas.width, canvas.height, values.noise);
         drawVignette(ctx, canvas.width, canvas.height, values.vignette);
-
         drawDrawingClips(ctx, drawingClips, frameTime, canvas.width, canvas.height);
 
-        const shouldSkipSelected = !isExportingRef.current;
+        const shouldSkipSelectedTextEditor = !isExportingRef.current;
 
         textBoxes.forEach((box) => {
-            if (shouldSkipSelected && box.id === selectedTextIdRef.current) {
+            if (shouldSkipSelectedTextEditor && box.id === selectedTextIdRef.current) {
                 return;
             }
 
             drawTextBox(ctx, box, canvas.width, canvas.height);
         });
-    }, [effectClips, drawingClips, textBoxes]);
+    }, [visualClips, drawingClips, textBoxes]);
+
+    const applyAudioGraphValues = useCallback((values) => {
+        const nodes = audioNodesRef.current;
+        const context = audioContextRef.current;
+
+        if (!nodes || !context) {
+            return;
+        }
+
+        const now = context.currentTime;
+        const safeLowpass = Math.max(values.lowpass, values.highpass + 80);
+        const safeHighpass = Math.min(values.highpass, safeLowpass - 80);
+        const delayMix = clamp(values.delayMix / 100, 0, 1);
+
+        nodes.inputGain.gain.setTargetAtTime(clamp(values.gain / 100, 0, 2), now, 0.02);
+        nodes.masterGain.gain.setTargetAtTime(clamp(volume, 0, 1), now, 0.02);
+        nodes.bass.gain.setTargetAtTime(values.bass, now, 0.02);
+        nodes.treble.gain.setTargetAtTime(values.treble, now, 0.02);
+        nodes.lowpass.frequency.setTargetAtTime(safeLowpass, now, 0.02);
+        nodes.highpass.frequency.setTargetAtTime(Math.max(10, safeHighpass), now, 0.02);
+        nodes.delay.delayTime.setTargetAtTime(values.delayTime, now, 0.02);
+        nodes.feedback.gain.setTargetAtTime(clamp(values.feedback / 100, 0, 0.9), now, 0.02);
+        nodes.dryGain.gain.setTargetAtTime(1 - delayMix * 0.35, now, 0.02);
+        nodes.wetGain.gain.setTargetAtTime(delayMix, now, 0.02);
+
+        if (nodes.pan?.pan) {
+            nodes.pan.pan.setTargetAtTime(clamp(values.pan / 100, -1, 1), now, 0.02);
+        }
+    }, [volume]);
+
+    const ensureAudioGraph = useCallback(async () => {
+        const video = videoRef.current;
+
+        if (!video || !support.webAudio) {
+            return null;
+        }
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+        if (!audioContextRef.current) {
+            audioContextRef.current = new AudioContextClass();
+        }
+
+        const context = audioContextRef.current;
+
+        if (!audioSourceRef.current) {
+            audioSourceRef.current = context.createMediaElementSource(video);
+        }
+
+        if (!audioNodesRef.current) {
+            const inputGain = context.createGain();
+
+            const bass = context.createBiquadFilter();
+            bass.type = "lowshelf";
+            bass.frequency.value = 180;
+
+            const treble = context.createBiquadFilter();
+            treble.type = "highshelf";
+            treble.frequency.value = 3600;
+
+            const highpass = context.createBiquadFilter();
+            highpass.type = "highpass";
+            highpass.frequency.value = 10;
+
+            const lowpass = context.createBiquadFilter();
+            lowpass.type = "lowpass";
+            lowpass.frequency.value = 22050;
+
+            const delay = context.createDelay(1.5);
+            delay.delayTime.value = AUDIO_NEUTRAL.delayTime;
+
+            const feedback = context.createGain();
+            feedback.gain.value = 0;
+
+            const dryGain = context.createGain();
+            const wetGain = context.createGain();
+            wetGain.gain.value = 0;
+
+            const pan = context.createStereoPanner ? context.createStereoPanner() : context.createGain();
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 256;
+
+            const masterGain = context.createGain();
+            const streamDestination = context.createMediaStreamDestination();
+
+            audioSourceRef.current.connect(inputGain);
+            inputGain.connect(bass);
+            bass.connect(treble);
+            treble.connect(highpass);
+            highpass.connect(lowpass);
+
+            lowpass.connect(dryGain);
+            lowpass.connect(delay);
+            delay.connect(feedback);
+            feedback.connect(delay);
+            delay.connect(wetGain);
+
+            dryGain.connect(pan);
+            wetGain.connect(pan);
+            pan.connect(analyser);
+            analyser.connect(masterGain);
+
+            masterGain.connect(context.destination);
+            masterGain.connect(streamDestination);
+
+            audioNodesRef.current = {
+                inputGain,
+                bass,
+                treble,
+                highpass,
+                lowpass,
+                delay,
+                feedback,
+                dryGain,
+                wetGain,
+                pan,
+                analyser,
+                masterGain,
+                streamDestination,
+            };
+        }
+
+        if (context.state === "suspended") {
+            await context.resume();
+        }
+
+        applyAudioGraphValues(activeAudioValues);
+
+        return audioNodesRef.current;
+    }, [activeAudioValues, applyAudioGraphValues, support.webAudio]);
 
     useEffect(() => {
         if (!videoUrl) {
@@ -1145,6 +2099,28 @@ export function BrowserVideoEditor() {
         }
 
         const render = () => {
+            const video = videoRef.current;
+
+            if (video) {
+                const nextTime = video.currentTime || 0;
+                setCurrentTime(nextTime);
+                applyAudioGraphValues(combineAudioClips(audioClips, nextTime));
+
+                if (trimEnd > trimStart && nextTime >= trimEnd && !isExportingRef.current) {
+                    video.pause();
+                    setIsPlaying(false);
+                }
+
+                const nodes = audioNodesRef.current;
+
+                if (nodes?.analyser) {
+                    const data = new Uint8Array(nodes.analyser.frequencyBinCount);
+                    nodes.analyser.getByteFrequencyData(data);
+                    const average = data.reduce((sum, item) => sum + item, 0) / Math.max(1, data.length);
+                    setAudioMeter(clamp(average / 255, 0, 1));
+                }
+            }
+
             drawFrame();
             animationFrameRef.current = requestAnimationFrame(render);
         };
@@ -1156,7 +2132,7 @@ export function BrowserVideoEditor() {
                 cancelAnimationFrame(animationFrameRef.current);
             }
         };
-    }, [videoUrl, drawFrame]);
+    }, [videoUrl, audioClips, trimStart, trimEnd, drawFrame, applyAudioGraphValues]);
 
     const seekTo = useCallback((time) => {
         return new Promise((resolve) => {
@@ -1168,7 +2144,6 @@ export function BrowserVideoEditor() {
             }
 
             const targetTime = clamp(time, 0, Number.isFinite(video.duration) ? video.duration : time);
-
             let resolved = false;
 
             const finish = () => {
@@ -1179,15 +2154,28 @@ export function BrowserVideoEditor() {
                 resolved = true;
                 video.removeEventListener("seeked", finish);
                 setCurrentTime(targetTime);
+                requestAnimationFrame(drawFrame);
                 resolve();
             };
 
             video.addEventListener("seeked", finish, { once: true });
             video.currentTime = targetTime;
-
             setTimeout(finish, 450);
         });
-    }, []);
+    }, [drawFrame]);
+
+    const resetEditorLayers = () => {
+        setTextBoxes([]);
+        setVisualClips([]);
+        setAudioClips([]);
+        setDrawingClips([]);
+        setMarkers([]);
+        setSelectedTextId(null);
+        setSelectedKind(null);
+        setSelectedClipId(null);
+        setSelectedKeyframeId(null);
+        setDrawingMode(false);
+    };
 
     const handleFileChange = (event) => {
         const file = event.target.files?.[0];
@@ -1202,7 +2190,14 @@ export function BrowserVideoEditor() {
 
         if (downloadUrlRef.current) {
             URL.revokeObjectURL(downloadUrlRef.current);
-            downloadUrlRef.current = null;
+            downloadUrlRef.current = "";
+        }
+
+        if (audioContextRef.current) {
+            audioContextRef.current.close?.();
+            audioContextRef.current = null;
+            audioSourceRef.current = null;
+            audioNodesRef.current = null;
         }
 
         const nextUrl = URL.createObjectURL(file);
@@ -1211,18 +2206,22 @@ export function BrowserVideoEditor() {
         setFileName(file.name);
         setDuration(0);
         setCurrentTime(0);
-        setRange([0, 0]);
+        setTrimStart(0);
+        setTrimEnd(0);
         setIsPlaying(false);
         setDownloadUrl("");
-        setStatus("Video loaded. Waiting for metadata...");
-        setSelectedTextId(null);
-        setTextBoxes([]);
-        setEffectClips([]);
-        setSelectedEffectId(null);
-        setSelectedKeyframeId(null);
-        setDrawingClips([]);
-        setSelectedDrawingClipId(null);
-        setDrawingMode(false);
+        setAudioMeter(0);
+        setStatus("Video selected. Loading metadata and preparing canvas preview...");
+        resetEditorLayers();
+
+        event.target.value = "";
+    };
+
+    const paintLoadedVideoToCanvas = () => {
+        requestAnimationFrame(() => {
+            drawFrame();
+            requestAnimationFrame(drawFrame);
+        });
     };
 
     const handleLoadedMetadata = () => {
@@ -1235,25 +2234,25 @@ export function BrowserVideoEditor() {
         const nextDuration = Number.isFinite(video.duration) ? video.duration : 0;
 
         setDuration(nextDuration);
-        setRange([0, nextDuration]);
+        setTrimStart(0);
+        setTrimEnd(nextDuration);
         setAspectRatio(`${video.videoWidth || 16} / ${video.videoHeight || 9}`);
-        setStatus("Ready. Add effect clips, drawing clips, and keyframes.");
-        drawFrame();
+        setStatus("Video metadata loaded. Canvas preview is preparing...");
+        paintLoadedVideoToCanvas();
     };
 
-    const handleTimeUpdate = () => {
+    const handleLoadedData = () => {
         const video = videoRef.current;
 
         if (!video) {
             return;
         }
 
-        setCurrentTime(video.currentTime);
-
-        if (trimEnd > trimStart && video.currentTime >= trimEnd) {
-            video.pause();
-            setIsPlaying(false);
-        }
+        video.pause();
+        video.currentTime = 0;
+        setCurrentTime(0);
+        paintLoadedVideoToCanvas();
+        setStatus("Canvas preview is ready. The uploaded video is visible in the editor.");
     };
 
     const handlePlayPause = async () => {
@@ -1264,7 +2263,6 @@ export function BrowserVideoEditor() {
             return;
         }
 
-        video.volume = volume;
         video.playbackRate = speed;
 
         if (isPlaying) {
@@ -1273,6 +2271,8 @@ export function BrowserVideoEditor() {
             return;
         }
 
+        await ensureAudioGraph();
+
         if (video.currentTime < trimStart || video.currentTime >= trimEnd) {
             await seekTo(trimStart);
         }
@@ -1280,7 +2280,7 @@ export function BrowserVideoEditor() {
         try {
             await video.play();
             setIsPlaying(true);
-            setStatus("Preview playing with filters and drawing layers.");
+            setStatus("Preview playing with canvas video, visual clips, and audio clips.");
         } catch (error) {
             setStatus("The browser blocked playback. Tap play again or check the video file.");
         }
@@ -1296,38 +2296,568 @@ export function BrowserVideoEditor() {
         video.pause();
         setIsPlaying(false);
         await seekTo(trimStart);
-        setCurrentTime(trimStart);
         drawFrame();
     };
 
-    const handleRangeChange = async (_, value) => {
-        if (!Array.isArray(value)) {
-            return;
-        }
-
-        const start = clamp(value[0], 0, duration);
-        const end = clamp(value[1], start + 0.1, duration);
-
-        setRange([start, end]);
-
+    const handleSeek = async (nextTime) => {
         const video = videoRef.current;
 
-        if (video && (video.currentTime < start || video.currentTime > end)) {
-            video.currentTime = start;
-            setCurrentTime(start);
-        }
-    };
-
-    const handlePlayheadChange = async (_, value) => {
-        const nextTime = clamp(Number(value), trimStart, trimEnd || duration);
-
-        if (videoRef.current) {
-            videoRef.current.pause();
+        if (video) {
+            video.pause();
             setIsPlaying(false);
         }
 
-        await seekTo(nextTime);
+        await seekTo(clamp(nextTime, trimStart, trimEnd || duration));
         drawFrame();
+    };
+
+    const updateTrimStart = async (value) => {
+        const next = clamp(Number.isFinite(value) ? value : 0, 0, Math.max(0, trimEnd - MIN_CLIP_LENGTH));
+
+        setTrimStart(next);
+
+        if (currentTime < next) {
+            await handleSeek(next);
+        }
+    };
+
+    const updateTrimEnd = async (value) => {
+        const next = clamp(Number.isFinite(value) ? value : duration, trimStart + MIN_CLIP_LENGTH, duration || trimStart + MIN_CLIP_LENGTH);
+
+        setTrimEnd(next);
+
+        if (currentTime > next) {
+            await handleSeek(next);
+        }
+    };
+
+    const getSafeNewClipRange = () => {
+        const safeStart = clamp(currentTime || trimStart, trimStart, Math.max(trimStart, trimEnd - MIN_CLIP_LENGTH));
+        const safeEnd = clamp(
+            safeStart + Math.min(3, Math.max(MIN_CLIP_LENGTH, trimEnd - safeStart)),
+            safeStart + MIN_CLIP_LENGTH,
+            trimEnd || duration || safeStart + 3
+        );
+
+        return [safeStart, safeEnd];
+    };
+
+    const selectClip = (kind, id) => {
+        const clip =
+            kind === "visual"
+                ? visualClips.find((item) => item.id === id)
+                : kind === "audio"
+                    ? audioClips.find((item) => item.id === id)
+                    : drawingClips.find((item) => item.id === id);
+
+        setSelectedKind(kind);
+        setSelectedClipId(id);
+        setSelectedTextId(null);
+        setDrawingMode(kind === "draw");
+        setSelectedKeyframeId(clip?.keyframes?.[clip.keyframes.length - 1]?.id || null);
+    };
+
+    const clearSelection = () => {
+        setSelectedKind(null);
+        setSelectedClipId(null);
+        setSelectedTextId(null);
+        setSelectedKeyframeId(null);
+        setDrawingMode(false);
+    };
+
+    const addVisualClip = (presetName = "cinematic") => {
+        if (!videoUrl) {
+            setStatus("Upload a video before adding a visual effect clip.");
+            return;
+        }
+
+        const preset = VISUAL_PRESETS[presetName] || VISUAL_PRESETS.cinematic;
+        const [start, end] = getSafeNewClipRange();
+        const clipId = makeId("visual");
+        const firstKeyframeId = makeId("keyframe");
+        const secondKeyframeId = makeId("keyframe");
+
+        const nextClip = {
+            id: clipId,
+            type: "visual",
+            label: `${preset.label} ${visualClips.length + 1}`,
+            enabled: true,
+            locked: false,
+            start,
+            end,
+            blendMode: "normal",
+            keyframes: [
+                {
+                    id: firstKeyframeId,
+                    time: start,
+                    values: { ...VISUAL_NEUTRAL },
+                },
+                {
+                    id: secondKeyframeId,
+                    time: end,
+                    values: { ...preset.values },
+                },
+            ],
+        };
+
+        setVisualClips((previous) => [...previous, nextClip]);
+        setSelectedKind("visual");
+        setSelectedClipId(clipId);
+        setSelectedKeyframeId(secondKeyframeId);
+        setSelectedTextId(null);
+        setDrawingMode(false);
+        setStatus("Visual effect clip added. Resize it directly on the timeline.");
+    };
+
+    const addAudioClip = (presetName = "echo") => {
+        if (!videoUrl) {
+            setStatus("Upload a video before adding an audio effect clip.");
+            return;
+        }
+
+        const preset = AUDIO_PRESETS[presetName] || AUDIO_PRESETS.echo;
+        const [start, end] = getSafeNewClipRange();
+        const clipId = makeId("audio");
+        const firstKeyframeId = makeId("keyframe");
+        const secondKeyframeId = makeId("keyframe");
+
+        const nextClip = {
+            id: clipId,
+            type: "audio",
+            label: `${preset.label} ${audioClips.length + 1}`,
+            enabled: true,
+            locked: false,
+            start,
+            end,
+            keyframes: [
+                {
+                    id: firstKeyframeId,
+                    time: start,
+                    values: { ...AUDIO_NEUTRAL },
+                },
+                {
+                    id: secondKeyframeId,
+                    time: end,
+                    values: { ...preset.values },
+                },
+            ],
+        };
+
+        setAudioClips((previous) => [...previous, nextClip]);
+        setSelectedKind("audio");
+        setSelectedClipId(clipId);
+        setSelectedKeyframeId(secondKeyframeId);
+        setSelectedTextId(null);
+        setDrawingMode(false);
+        setStatus("Audio effect clip added. Resize it directly on the timeline.");
+    };
+
+    const addDrawingClip = () => {
+        if (!videoUrl) {
+            setStatus("Upload a video before adding a drawing clip.");
+            return;
+        }
+
+        const [start, end] = getSafeNewClipRange();
+        const clipId = makeId("draw");
+
+        const nextClip = {
+            id: clipId,
+            type: "draw",
+            label: `Drawing ${drawingClips.length + 1}`,
+            enabled: true,
+            locked: false,
+            start,
+            end,
+            blendMode: "source-over",
+            brush: { ...brush },
+            strokes: [],
+        };
+
+        setDrawingClips((previous) => [...previous, nextClip]);
+        setSelectedKind("draw");
+        setSelectedClipId(clipId);
+        setSelectedKeyframeId(null);
+        setSelectedTextId(null);
+        setDrawingMode(true);
+        setStatus("Drawing clip added. Move the playhead inside it, then draw on the canvas.");
+    };
+
+    const updateClipTiming = useCallback((kind, clipId, nextStart, nextEnd, options = {}) => {
+        const applyTiming = (clip) => {
+            if (clip.locked) {
+                return clip;
+            }
+
+            const start = clamp(nextStart, trimStart, Math.max(trimStart, trimEnd - MIN_CLIP_LENGTH));
+            const end = clamp(nextEnd, start + MIN_CLIP_LENGTH, trimEnd || duration || start + MIN_CLIP_LENGTH);
+            const shiftDelta = Number(options.shiftDelta || 0);
+
+            return {
+                ...clip,
+                start,
+                end,
+                keyframes: clip.keyframes
+                    ? sortKeyframes(
+                        clip.keyframes.map((keyframe) => ({
+                            ...keyframe,
+                            time: clamp(keyframe.time + shiftDelta, start, end),
+                        }))
+                    )
+                    : clip.keyframes,
+            };
+        };
+
+        if (kind === "visual") {
+            setVisualClips((previous) => previous.map((clip) => (clip.id === clipId ? applyTiming(clip) : clip)));
+        }
+
+        if (kind === "audio") {
+            setAudioClips((previous) => previous.map((clip) => (clip.id === clipId ? applyTiming(clip) : clip)));
+        }
+
+        if (kind === "draw") {
+            setDrawingClips((previous) => previous.map((clip) => (clip.id === clipId ? applyTiming(clip) : clip)));
+        }
+    }, [duration, trimStart, trimEnd]);
+
+    const updateClipPatch = (kind, clipId, patch) => {
+        if (kind === "visual") {
+            setVisualClips((previous) => previous.map((clip) => (clip.id === clipId ? { ...clip, ...patch } : clip)));
+        }
+
+        if (kind === "audio") {
+            setAudioClips((previous) => previous.map((clip) => (clip.id === clipId ? { ...clip, ...patch } : clip)));
+        }
+
+        if (kind === "draw") {
+            setDrawingClips((previous) => previous.map((clip) => (clip.id === clipId ? { ...clip, ...patch } : clip)));
+        }
+    };
+
+    const updateSelectedClipPatch = (patch) => {
+        if (!selectedKind || !selectedClipId) {
+            return;
+        }
+
+        updateClipPatch(selectedKind, selectedClipId, patch);
+    };
+
+    const deleteSelectedClip = () => {
+        if (!selectedKind || !selectedClipId) {
+            return;
+        }
+
+        if (selectedKind === "visual") {
+            setVisualClips((previous) => previous.filter((clip) => clip.id !== selectedClipId));
+        }
+
+        if (selectedKind === "audio") {
+            setAudioClips((previous) => previous.filter((clip) => clip.id !== selectedClipId));
+        }
+
+        if (selectedKind === "draw") {
+            setDrawingClips((previous) => previous.filter((clip) => clip.id !== selectedClipId));
+        }
+
+        clearSelection();
+        setStatus("Selected timeline clip deleted.");
+    };
+
+    const duplicateSelectedClip = () => {
+        if (!selectedKind || !selectedClip) {
+            return;
+        }
+
+        const clipLength = selectedClip.end - selectedClip.start;
+        const nextStart = clamp(selectedClip.end + 0.1, trimStart, Math.max(trimStart, trimEnd - clipLength));
+        const nextEnd = clamp(nextStart + clipLength, nextStart + MIN_CLIP_LENGTH, trimEnd);
+        const copyId = makeId(selectedKind);
+
+        const copyClip = {
+            ...selectedClip,
+            id: copyId,
+            label: `${selectedClip.label} Copy`,
+            start: nextStart,
+            end: nextEnd,
+            locked: false,
+            keyframes: selectedClip.keyframes
+                ? selectedClip.keyframes.map((keyframe) => ({
+                    ...keyframe,
+                    id: makeId("keyframe"),
+                    time: clamp(nextStart + (keyframe.time - selectedClip.start), nextStart, nextEnd),
+                }))
+                : selectedClip.keyframes,
+            strokes: selectedClip.strokes ? selectedClip.strokes.map((stroke) => ({ ...stroke, id: makeId("stroke") })) : selectedClip.strokes,
+        };
+
+        if (selectedKind === "visual") {
+            setVisualClips((previous) => [...previous, copyClip]);
+        }
+
+        if (selectedKind === "audio") {
+            setAudioClips((previous) => [...previous, copyClip]);
+        }
+
+        if (selectedKind === "draw") {
+            setDrawingClips((previous) => [...previous, copyClip]);
+        }
+
+        setSelectedClipId(copyId);
+        setSelectedKeyframeId(copyClip.keyframes?.[0]?.id || null);
+        setStatus("Selected clip duplicated.");
+    };
+
+    const splitSelectedClipAtPlayhead = () => {
+        if (!selectedKind || !selectedClip || selectedClip.locked) {
+            return;
+        }
+
+        if (currentTime <= selectedClip.start + MIN_CLIP_LENGTH || currentTime >= selectedClip.end - MIN_CLIP_LENGTH) {
+            setStatus("Move the playhead inside the selected clip before splitting.");
+            return;
+        }
+
+        const leftClip = {
+            ...selectedClip,
+            end: currentTime,
+            keyframes: selectedClip.keyframes
+                ? selectedClip.keyframes.map((keyframe) => ({
+                    ...keyframe,
+                    time: clamp(keyframe.time, selectedClip.start, currentTime),
+                }))
+                : selectedClip.keyframes,
+        };
+
+        const rightId = makeId(selectedKind);
+        const rightClip = {
+            ...selectedClip,
+            id: rightId,
+            label: `${selectedClip.label} Split`,
+            start: currentTime,
+            keyframes: selectedClip.keyframes
+                ? selectedClip.keyframes.map((keyframe) => ({
+                    ...keyframe,
+                    id: makeId("keyframe"),
+                    time: clamp(keyframe.time, currentTime, selectedClip.end),
+                }))
+                : selectedClip.keyframes,
+        };
+
+        const replaceSplit = (clips) =>
+            clips.flatMap((clip) => {
+                if (clip.id !== selectedClip.id) {
+                    return [clip];
+                }
+
+                return [leftClip, rightClip];
+            });
+
+        if (selectedKind === "visual") {
+            setVisualClips(replaceSplit);
+        }
+
+        if (selectedKind === "audio") {
+            setAudioClips(replaceSplit);
+        }
+
+        if (selectedKind === "draw") {
+            setDrawingClips(replaceSplit);
+        }
+
+        setSelectedClipId(rightId);
+        setStatus("Selected clip split at the playhead.");
+    };
+
+    const nudgeSelectedClip = (mode, amount) => {
+        if (!selectedKind || !selectedClip || selectedClip.locked) {
+            return;
+        }
+
+        if (mode === "move") {
+            const clipLength = selectedClip.end - selectedClip.start;
+            const nextStart = clamp(selectedClip.start + amount, trimStart, trimEnd - clipLength);
+            const nextEnd = nextStart + clipLength;
+            updateClipTiming(selectedKind, selectedClip.id, nextStart, nextEnd, {
+                shiftDelta: nextStart - selectedClip.start,
+            });
+        }
+
+        if (mode === "start") {
+            updateClipTiming(selectedKind, selectedClip.id, selectedClip.start + amount, selectedClip.end);
+        }
+
+        if (mode === "end") {
+            updateClipTiming(selectedKind, selectedClip.id, selectedClip.start, selectedClip.end + amount);
+        }
+    };
+
+    const addKeyframeAtPlayhead = () => {
+        if (!selectedParamClip || !selectedParamType || selectedParamClip.locked) {
+            setStatus("Select an unlocked visual or audio effect clip before adding a keyframe.");
+            return;
+        }
+
+        const keyframeId = makeId("keyframe");
+        const time = clamp(currentTime, selectedParamClip.start, selectedParamClip.end);
+        const values = evaluateKeyframes(selectedParamDefs, selectedNeutral, selectedParamClip.keyframes, time);
+
+        const updater = (clip) => ({
+            ...clip,
+            keyframes: sortKeyframes([
+                ...clip.keyframes,
+                {
+                    id: keyframeId,
+                    time,
+                    values,
+                },
+            ]),
+        });
+
+        if (selectedParamType === "visual") {
+            setVisualClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? updater(clip) : clip));
+        }
+
+        if (selectedParamType === "audio") {
+            setAudioClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? updater(clip) : clip));
+        }
+
+        setSelectedKeyframeId(keyframeId);
+        setStatus(`Keyframe added at ${formatTime(time)}.`);
+    };
+
+    const deleteSelectedKeyframe = () => {
+        if (!selectedParamClip || !selectedKeyframe || selectedParamClip.locked) {
+            return;
+        }
+
+        if (selectedParamClip.keyframes.length <= 1) {
+            setStatus("A clip needs at least one keyframe.");
+            return;
+        }
+
+        const remaining = selectedParamClip.keyframes.filter((keyframe) => keyframe.id !== selectedKeyframe.id);
+
+        if (selectedParamType === "visual") {
+            setVisualClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? { ...clip, keyframes: remaining } : clip));
+        }
+
+        if (selectedParamType === "audio") {
+            setAudioClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? { ...clip, keyframes: remaining } : clip));
+        }
+
+        setSelectedKeyframeId(remaining[0]?.id || null);
+        setStatus("Keyframe deleted.");
+    };
+
+    const updateKeyframeTime = (kind, clipId, keyframeId, nextTime) => {
+        const update = (clip) => {
+            if (clip.id !== clipId || clip.locked) {
+                return clip;
+            }
+
+            return {
+                ...clip,
+                keyframes: sortKeyframes(
+                    clip.keyframes.map((keyframe) =>
+                        keyframe.id === keyframeId
+                            ? {
+                                ...keyframe,
+                                time: clamp(nextTime, clip.start, clip.end),
+                            }
+                            : keyframe
+                    )
+                ),
+            };
+        };
+
+        if (kind === "visual") {
+            setVisualClips((previous) => previous.map(update));
+        }
+
+        if (kind === "audio") {
+            setAudioClips((previous) => previous.map(update));
+        }
+    };
+
+    const updateSelectedKeyframe = (patch) => {
+        if (!selectedParamClip || !selectedKeyframe || selectedParamClip.locked) {
+            return;
+        }
+
+        const updater = (clip) => ({
+            ...clip,
+            keyframes: sortKeyframes(
+                clip.keyframes.map((keyframe) =>
+                    keyframe.id === selectedKeyframe.id
+                        ? { ...keyframe, ...patch }
+                        : keyframe
+                )
+            ),
+        });
+
+        if (selectedParamType === "visual") {
+            setVisualClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? updater(clip) : clip));
+        }
+
+        if (selectedParamType === "audio") {
+            setAudioClips((previous) => previous.map((clip) => clip.id === selectedParamClip.id ? updater(clip) : clip));
+        }
+    };
+
+    const updateSelectedKeyframeTime = (time) => {
+        if (!selectedParamClip) {
+            return;
+        }
+
+        updateSelectedKeyframe({
+            time: clamp(time, selectedParamClip.start, selectedParamClip.end),
+        });
+    };
+
+    const updateSelectedKeyframeValue = (key, value) => {
+        if (!selectedKeyframe) {
+            return;
+        }
+
+        updateSelectedKeyframe({
+            values: {
+                ...selectedKeyframe.values,
+                [key]: value,
+            },
+        });
+    };
+
+    const applyPresetToSelectedKeyframe = (presetName) => {
+        if (!selectedKeyframe || !selectedPresets[presetName]) {
+            return;
+        }
+
+        updateSelectedKeyframe({
+            values: { ...selectedPresets[presetName].values },
+        });
+
+        setStatus(`${selectedPresets[presetName].label} values applied to selected keyframe.`);
+    };
+
+    const addMarkerAtPlayhead = () => {
+        if (!videoUrl) {
+            setStatus("Upload a video before adding a timeline marker.");
+            return;
+        }
+
+        const nextMarker = {
+            id: makeId("marker"),
+            time: currentTime,
+            label: `Marker ${markers.length + 1}`,
+        };
+
+        setMarkers((previous) => [...previous, nextMarker].sort((a, b) => a.time - b.time));
+        setStatus(`Marker added at ${formatTime(currentTime)}.`);
+    };
+
+    const deleteMarker = (markerId) => {
+        setMarkers((previous) => previous.filter((marker) => marker.id !== markerId));
     };
 
     const addTextBox = () => {
@@ -1345,6 +2875,10 @@ export function BrowserVideoEditor() {
 
         setTextBoxes((previous) => [...previous, next]);
         setSelectedTextId(next.id);
+        setSelectedKind(null);
+        setSelectedClipId(null);
+        setSelectedKeyframeId(null);
+        setDrawingMode(false);
         setStatus("Text box added. Drag the move handle to position it.");
     };
 
@@ -1356,10 +2890,7 @@ export function BrowserVideoEditor() {
         setTextBoxes((previous) =>
             previous.map((box) =>
                 box.id === selectedTextId
-                    ? {
-                        ...box,
-                        ...patch,
-                    }
+                    ? { ...box, ...patch }
                     : box
             )
         );
@@ -1397,11 +2928,7 @@ export function BrowserVideoEditor() {
         setTextBoxes((previous) =>
             previous.map((box) =>
                 box.id === dragTextIdRef.current
-                    ? {
-                        ...box,
-                        x,
-                        y,
-                    }
+                    ? { ...box, x, y }
                     : box
             )
         );
@@ -1412,348 +2939,15 @@ export function BrowserVideoEditor() {
         event.currentTarget.releasePointerCapture?.(event.pointerId);
     };
 
-    const addEffectClip = (presetName = "cinematic") => {
-        if (!videoUrl) {
-            setStatus("Upload a video before adding an effect clip.");
-            return;
-        }
-
-        const preset = EFFECT_PRESETS[presetName] || EFFECT_PRESETS.cinematic;
-        const safeStart = clamp(currentTime || trimStart, trimStart, Math.max(trimStart, trimEnd - 0.25));
-        const safeEnd = clamp(safeStart + 3, safeStart + 0.25, trimEnd || duration || safeStart + 3);
-
-        const clipNumber = effectClips.length + 1;
-        const clipId = makeId("effect");
-        const firstKeyframeId = makeId("keyframe");
-        const secondKeyframeId = makeId("keyframe");
-
-        const nextClip = {
-            id: clipId,
-            label: `${preset.label} ${clipNumber}`,
-            enabled: true,
-            start: safeStart,
-            end: safeEnd,
-            keyframes: [
-                {
-                    id: firstKeyframeId,
-                    time: safeStart,
-                    values: {
-                        ...NEUTRAL_FILTER_VALUES,
-                    },
-                },
-                {
-                    id: secondKeyframeId,
-                    time: safeEnd,
-                    values: {
-                        ...preset.values,
-                    },
-                },
-            ],
-        };
-
-        setEffectClips((previous) => [...previous, nextClip]);
-        setSelectedEffectId(clipId);
-        setSelectedKeyframeId(secondKeyframeId);
-        setStatus("Effect clip added. Select keyframes and adjust filter parameter values.");
-    };
-
-    const deleteSelectedEffect = () => {
-        if (!selectedEffectId) {
-            return;
-        }
-
-        setEffectClips((previous) => previous.filter((clip) => clip.id !== selectedEffectId));
-        setSelectedEffectId(null);
-        setSelectedKeyframeId(null);
-        setStatus("Effect clip deleted.");
-    };
-
-    const updateSelectedEffect = (patch) => {
-        if (!selectedEffectId) {
-            return;
-        }
-
-        setEffectClips((previous) =>
-            previous.map((clip) =>
-                clip.id === selectedEffectId
-                    ? {
-                        ...clip,
-                        ...patch,
-                    }
-                    : clip
-            )
-        );
-    };
-
-    const updateSelectedEffectRange = (_, value) => {
-        if (!selectedEffect || !Array.isArray(value)) {
-            return;
-        }
-
-        const start = clamp(value[0], trimStart, trimEnd);
-        const end = clamp(value[1], start + 0.1, trimEnd);
-
-        setEffectClips((previous) =>
-            previous.map((clip) => {
-                if (clip.id !== selectedEffect.id) {
-                    return clip;
-                }
-
-                return {
-                    ...clip,
-                    start,
-                    end,
-                    keyframes: clip.keyframes.map((keyframe) => ({
-                        ...keyframe,
-                        time: clamp(keyframe.time, start, end),
-                    })),
-                };
-            })
-        );
-    };
-
-    const addKeyframeAtPlayhead = () => {
-        if (!selectedEffect) {
-            setStatus("Select an effect clip before adding a keyframe.");
-            return;
-        }
-
-        const time = clamp(currentTime, selectedEffect.start, selectedEffect.end);
-        const currentValues = evaluateKeyframes(selectedEffect.keyframes, time);
-        const keyframeId = makeId("keyframe");
-
-        setEffectClips((previous) =>
-            previous.map((clip) => {
-                if (clip.id !== selectedEffect.id) {
-                    return clip;
-                }
-
-                return {
-                    ...clip,
-                    keyframes: sortKeyframes([
-                        ...clip.keyframes,
-                        {
-                            id: keyframeId,
-                            time,
-                            values: currentValues,
-                        },
-                    ]),
-                };
-            })
-        );
-
-        setSelectedKeyframeId(keyframeId);
-        setStatus(`Keyframe added at ${formatTime(time)}.`);
-    };
-
-    const deleteSelectedKeyframe = () => {
-        if (!selectedEffect || !selectedKeyframe) {
-            return;
-        }
-
-        if (selectedEffect.keyframes.length <= 1) {
-            setStatus("An effect clip needs at least one keyframe.");
-            return;
-        }
-
-        const remaining = selectedEffect.keyframes.filter((keyframe) => keyframe.id !== selectedKeyframe.id);
-
-        setEffectClips((previous) =>
-            previous.map((clip) =>
-                clip.id === selectedEffect.id
-                    ? {
-                        ...clip,
-                        keyframes: remaining,
-                    }
-                    : clip
-            )
-        );
-
-        setSelectedKeyframeId(remaining[0]?.id || null);
-        setStatus("Keyframe deleted.");
-    };
-
-    const updateSelectedKeyframe = (patch) => {
-        if (!selectedEffect || !selectedKeyframe) {
-            return;
-        }
-
-        setEffectClips((previous) =>
-            previous.map((clip) => {
-                if (clip.id !== selectedEffect.id) {
-                    return clip;
-                }
-
-                return {
-                    ...clip,
-                    keyframes: sortKeyframes(
-                        clip.keyframes.map((keyframe) =>
-                            keyframe.id === selectedKeyframe.id
-                                ? {
-                                    ...keyframe,
-                                    ...patch,
-                                }
-                                : keyframe
-                        )
-                    ),
-                };
-            })
-        );
-    };
-
-    const updateSelectedKeyframeValue = (key, value) => {
-        if (!selectedKeyframe) {
-            return;
-        }
-
-        updateSelectedKeyframe({
-            values: {
-                ...selectedKeyframe.values,
-                [key]: value,
-            },
-        });
-    };
-
-    const applyPresetToSelectedKeyframe = (presetName) => {
-        if (!selectedKeyframe) {
-            return;
-        }
-
-        const preset = EFFECT_PRESETS[presetName];
-
-        if (!preset) {
-            return;
-        }
-
-        updateSelectedKeyframe({
-            values: {
-                ...preset.values,
-            },
-        });
-
-        setStatus(`${preset.label} values applied to selected keyframe.`);
-    };
-
-    const addDrawingClip = () => {
-        if (!videoUrl) {
-            setStatus("Upload a video before adding a drawing clip.");
-            return;
-        }
-
-        const safeStart = clamp(currentTime || trimStart, trimStart, Math.max(trimStart, trimEnd - 0.25));
-        const safeEnd = clamp(safeStart + 3, safeStart + 0.25, trimEnd || duration || safeStart + 3);
-        const clipId = makeId("draw");
-
-        const nextClip = {
-            id: clipId,
-            label: `Drawing ${drawingClips.length + 1}`,
-            enabled: true,
-            start: safeStart,
-            end: safeEnd,
-            blendMode: "source-over",
-            brush: { ...brush },
-            strokes: [],
-        };
-
-        setDrawingClips((previous) => [...previous, nextClip]);
-        setSelectedDrawingClipId(clipId);
-        setDrawingMode(true);
-        setStatus("Drawing clip added. Draw on the preview using mouse, stylus, touch, or USB tablet.");
-    };
-
-    const updateSelectedDrawingClip = (patch) => {
-        if (!selectedDrawingClipId) {
-            return;
-        }
-
-        setDrawingClips((previous) =>
-            previous.map((clip) =>
-                clip.id === selectedDrawingClipId
-                    ? {
-                        ...clip,
-                        ...patch,
-                    }
-                    : clip
-            )
-        );
-    };
-
-    const updateSelectedDrawingClipRange = (_, value) => {
-        if (!selectedDrawingClip || !Array.isArray(value)) {
-            return;
-        }
-
-        const start = clamp(value[0], trimStart, trimEnd);
-        const end = clamp(value[1], start + 0.1, trimEnd);
-
-        updateSelectedDrawingClip({
-            start,
-            end,
-        });
-    };
-
-    const deleteSelectedDrawingClip = () => {
-        if (!selectedDrawingClipId) {
-            return;
-        }
-
-        setDrawingClips((previous) => previous.filter((clip) => clip.id !== selectedDrawingClipId));
-        setSelectedDrawingClipId(null);
-        setDrawingMode(false);
-        setStatus("Drawing clip deleted.");
-    };
-
-    const clearSelectedDrawingStrokes = () => {
-        if (!selectedDrawingClipId) {
-            return;
-        }
-
-        setDrawingClips((previous) =>
-            previous.map((clip) =>
-                clip.id === selectedDrawingClipId
-                    ? {
-                        ...clip,
-                        strokes: [],
-                    }
-                    : clip
-            )
-        );
-
-        setStatus("Drawing strokes cleared from selected clip.");
-    };
-
-    const undoLastStroke = () => {
-        if (!selectedDrawingClipId) {
-            return;
-        }
-
-        setDrawingClips((previous) =>
-            previous.map((clip) =>
-                clip.id === selectedDrawingClipId
-                    ? {
-                        ...clip,
-                        strokes: clip.strokes.slice(0, -1),
-                    }
-                    : clip
-            )
-        );
-    };
-
     const updateBrush = (patch) => {
         setBrush((previous) => {
-            const nextBrush = {
-                ...previous,
-                ...patch,
-            };
+            const nextBrush = { ...previous, ...patch };
 
-            if (selectedDrawingClipId) {
+            if (selectedKind === "draw" && selectedClipId) {
                 setDrawingClips((clips) =>
                     clips.map((clip) =>
-                        clip.id === selectedDrawingClipId
-                            ? {
-                                ...clip,
-                                brush: nextBrush,
-                            }
+                        clip.id === selectedClipId
+                            ? { ...clip, brush: nextBrush }
                             : clip
                     )
                 );
@@ -1763,8 +2957,38 @@ export function BrowserVideoEditor() {
         });
     };
 
+    const clearSelectedDrawingStrokes = () => {
+        if (selectedKind !== "draw" || !selectedClipId || selectedDrawingClip?.locked) {
+            return;
+        }
+
+        setDrawingClips((previous) =>
+            previous.map((clip) =>
+                clip.id === selectedClipId
+                    ? { ...clip, strokes: [] }
+                    : clip
+            )
+        );
+
+        setStatus("Drawing strokes cleared.");
+    };
+
+    const undoLastStroke = () => {
+        if (selectedKind !== "draw" || !selectedClipId || selectedDrawingClip?.locked) {
+            return;
+        }
+
+        setDrawingClips((previous) =>
+            previous.map((clip) =>
+                clip.id === selectedClipId
+                    ? { ...clip, strokes: clip.strokes.slice(0, -1) }
+                    : clip
+            )
+        );
+    };
+
     const getPointerPoint = (event) => {
-        if (!previewRef.current) {
+        if (!previewRef.current || !selectedDrawingClip) {
             return null;
         }
 
@@ -1772,9 +2996,7 @@ export function BrowserVideoEditor() {
         const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100);
         const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100);
         const pressure = event.pressure && event.pressure > 0 ? event.pressure : 0.5;
-        const localTime = selectedDrawingClip
-            ? clamp(currentTime - selectedDrawingClip.start, 0, selectedDrawingClip.end - selectedDrawingClip.start)
-            : 0;
+        const localTime = clamp(currentTime - selectedDrawingClip.start, 0, selectedDrawingClip.end - selectedDrawingClip.start);
 
         return {
             x,
@@ -1786,7 +3008,7 @@ export function BrowserVideoEditor() {
     };
 
     const appendPointToActiveStroke = (point) => {
-        if (!drawingStrokeRef.current || !selectedDrawingClipId) {
+        if (!drawingStrokeRef.current || selectedKind !== "draw" || !selectedClipId) {
             return;
         }
 
@@ -1803,7 +3025,7 @@ export function BrowserVideoEditor() {
 
         setDrawingClips((previous) =>
             previous.map((clip) => {
-                if (clip.id !== selectedDrawingClipId) {
+                if (clip.id !== selectedClipId) {
                     return clip;
                 }
 
@@ -1811,10 +3033,7 @@ export function BrowserVideoEditor() {
                     ...clip,
                     strokes: clip.strokes.map((stroke) =>
                         stroke.id === strokeId
-                            ? {
-                                ...stroke,
-                                points: [...drawingStrokeRef.current.points],
-                            }
+                            ? { ...stroke, points: [...drawingStrokeRef.current.points] }
                             : stroke
                     ),
                 };
@@ -1823,7 +3042,7 @@ export function BrowserVideoEditor() {
     };
 
     const handleCanvasPointerDown = (event) => {
-        if (!drawingMode || !selectedDrawingClip || isExporting) {
+        if (!drawingMode || !selectedDrawingClip || isExporting || selectedDrawingClip.locked) {
             return;
         }
 
@@ -1852,12 +3071,7 @@ export function BrowserVideoEditor() {
             size: brush.size,
             opacity: brush.opacity,
             pointerType: event.pointerType || "mouse",
-            points: [
-                {
-                    ...point,
-                    t: startOffset,
-                },
-            ],
+            points: [{ ...point, t: startOffset }],
         };
 
         drawingStrokeRef.current = {
@@ -1927,27 +3141,27 @@ export function BrowserVideoEditor() {
         try {
             setIsExporting(true);
             setIsPlaying(false);
-            setStatus("Exporting video with filters, drawings, and text...");
+            setStatus("Exporting canvas video with visual clips, drawings, text, and audio FX...");
             setDownloadUrl("");
 
             if (downloadUrlRef.current) {
                 URL.revokeObjectURL(downloadUrlRef.current);
-                downloadUrlRef.current = null;
+                downloadUrlRef.current = "";
             }
 
             video.pause();
-            video.volume = volume;
             video.playbackRate = speed;
+
+            const nodes = await ensureAudioGraph();
 
             await seekTo(trimStart);
             drawFrame();
 
-            const canvasStream = canvas.captureStream(30);
-            let audioTracks = [];
+            const canvasStream = canvas.captureStream(exportFps);
+            let audioTracks = nodes?.streamDestination?.stream?.getAudioTracks?.() || [];
 
-            if (typeof video.captureStream === "function") {
-                const sourceStream = video.captureStream();
-                audioTracks = sourceStream.getAudioTracks();
+            if (!audioTracks.length && typeof video.captureStream === "function") {
+                audioTracks = video.captureStream().getAudioTracks();
             }
 
             const outputStream = new MediaStream([
@@ -1961,14 +3175,8 @@ export function BrowserVideoEditor() {
                 "video/webm",
             ];
 
-            const mimeType =
-                mimeTypeOptions.find((type) => MediaRecorder.isTypeSupported(type)) || "";
-
-            const recorder = new MediaRecorder(
-                outputStream,
-                mimeType ? { mimeType } : undefined
-            );
-
+            const mimeType = mimeTypeOptions.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+            const recorder = new MediaRecorder(outputStream, mimeType ? { mimeType } : undefined);
             const chunks = [];
 
             recorder.ondataavailable = (event) => {
@@ -2000,7 +3208,6 @@ export function BrowserVideoEditor() {
             await finished;
 
             outputStream.getTracks().forEach((track) => track.stop());
-            canvasStream.getTracks().forEach((track) => track.stop());
 
             const blob = new Blob(chunks, {
                 type: recorder.mimeType || "video/webm",
@@ -2011,12 +3218,14 @@ export function BrowserVideoEditor() {
             setDownloadUrl(nextDownloadUrl);
             setStatus("Export ready. Download your edited WebM video.");
         } catch (error) {
-            setStatus("Export failed. Try a shorter clip or smaller video file.");
+            setStatus("Export failed. Try a shorter clip, smaller video, or a Chromium browser.");
         } finally {
             setIsExporting(false);
             setIsPlaying(false);
         }
     };
+
+    const totalClipCount = visualClips.length + audioClips.length + drawingClips.length;
 
     return (
         <Grid container spacing={2.5}>
@@ -2031,27 +3240,37 @@ export function BrowserVideoEditor() {
                         >
                             <Stack spacing={0.25}>
                                 <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                                    Preview Canvas
+                                    Canvas Preview
                                 </Typography>
                                 <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 14 }}>
                                     {fileName || "No video selected"}
                                 </Typography>
                             </Stack>
 
-                            <Button
-                                component="label"
-                                variant="contained"
-                                startIcon={<CloudUploadRounded />}
-                                sx={primaryPillSx}
-                            >
-                                Upload Video
-                                <input
-                                    hidden
-                                    type="file"
-                                    accept="video/*"
-                                    onChange={handleFileChange}
-                                />
-                            </Button>
+                            <Stack direction="row" spacing={1}>
+                                <Button
+                                    onClick={clearSelection}
+                                    disabled={!videoUrl}
+                                    sx={miniControlSx}
+                                >
+                                    Deselect
+                                </Button>
+
+                                <Button
+                                    component="label"
+                                    variant="contained"
+                                    startIcon={<CloudUploadRounded />}
+                                    sx={primaryPillSx}
+                                >
+                                    Upload Video
+                                    <input
+                                        hidden
+                                        type="file"
+                                        accept="video/*"
+                                        onChange={handleFileChange}
+                                    />
+                                </Button>
+                            </Stack>
                         </Stack>
 
                         <Box
@@ -2085,9 +3304,11 @@ export function BrowserVideoEditor() {
                                         ref={videoRef}
                                         src={videoUrl}
                                         playsInline
-                                        preload="metadata"
+                                        preload="auto"
                                         onLoadedMetadata={handleLoadedMetadata}
-                                        onTimeUpdate={handleTimeUpdate}
+                                        onLoadedData={handleLoadedData}
+                                        onCanPlay={paintLoadedVideoToCanvas}
+                                        onSeeked={paintLoadedVideoToCanvas}
                                         onPlay={() => setIsPlaying(true)}
                                         onPause={() => setIsPlaying(false)}
                                         style={{ display: "none" }}
@@ -2103,11 +3324,42 @@ export function BrowserVideoEditor() {
                                         }}
                                     />
 
-                                    <ActiveStatusBadge
-                                        values={activeValues}
-                                        drawingMode={drawingMode}
-                                        selectedDrawingClip={selectedDrawingClip}
-                                    />
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        useFlexGap
+                                        flexWrap="wrap"
+                                        sx={{
+                                            position: "absolute",
+                                            top: 12,
+                                            left: 12,
+                                            right: 12,
+                                            pointerEvents: "none",
+                                        }}
+                                    >
+                                        <Chip
+                                            label={`Video FX: ${visualClips.length} clips`}
+                                            sx={statusChipSx("#9ee8ff")}
+                                        />
+                                        <Chip
+                                            label={`Audio FX: ${audioClips.length} clips`}
+                                            sx={statusChipSx("#7ef4b6")}
+                                        />
+                                        <Chip
+                                            label={`Draw: ${drawingClips.length} clips`}
+                                            sx={statusChipSx("#b38cff")}
+                                        />
+                                        {drawingMode && (
+                                            <Chip
+                                                label="Drawing mode"
+                                                sx={{
+                                                    color: "#07111f",
+                                                    fontWeight: 950,
+                                                    background: "linear-gradient(135deg, #9ee8ff, #b38cff)",
+                                                }}
+                                            />
+                                        )}
+                                    </Stack>
 
                                     {selectedText && !drawingMode && (
                                         <Box
@@ -2193,9 +3445,9 @@ export function BrowserVideoEditor() {
                                         Upload a video to start
                                     </Typography>
 
-                                    <Typography sx={{ color: "rgba(255,255,255,0.58)", maxWidth: 540 }}>
-                                        This version supports keyframed filters, drawing clips,
-                                        pointer tracking, pen pressure, text overlays, and browser export.
+                                    <Typography sx={{ color: "rgba(255,255,255,0.58)", maxWidth: 560 }}>
+                                        After upload, the first decoded frame is drawn into the canvas immediately.
+                                        Timeline boxes control video filters, audio filters, drawing, and text overlays.
                                     </Typography>
                                 </Stack>
                             )}
@@ -2203,41 +3455,56 @@ export function BrowserVideoEditor() {
 
                         <TransportControls
                             videoUrl={videoUrl}
-                            isExporting={isExporting}
                             isPlaying={isPlaying}
-                            handlePlayPause={handlePlayPause}
-                            handleRestart={handleRestart}
-                            range={range}
+                            isExporting={isExporting}
                             duration={duration}
+                            currentTime={currentTime}
                             trimStart={trimStart}
                             trimEnd={trimEnd}
-                            currentTime={currentTime}
-                            handleRangeChange={handleRangeChange}
-                            handlePlayheadChange={handlePlayheadChange}
+                            onPlayPause={handlePlayPause}
+                            onRestart={handleRestart}
+                            onSeek={handleSeek}
+                            onTrimStartChange={updateTrimStart}
+                            onTrimEndChange={updateTrimEnd}
+                        />
+
+                        <TimelineToolbar
+                            videoUrl={videoUrl}
+                            timelineZoom={timelineZoom}
+                            setTimelineZoom={setTimelineZoom}
+                            snapEnabled={snapEnabled}
+                            setSnapEnabled={setSnapEnabled}
+                            snapStep={snapStep}
+                            setSnapStep={setSnapStep}
+                            addMarkerAtPlayhead={addMarkerAtPlayhead}
+                            totalClipCount={totalClipCount}
+                            markerCount={markers.length}
                         />
 
                         <TimelineView
                             duration={duration}
-                            trimStart={trimStart}
-                            trimEnd={trimEnd}
                             currentTime={currentTime}
-                            effectClips={effectClips}
+                            trimStart={trimStart}
+                            trimEnd={trimEnd || duration}
+                            visualClips={visualClips}
+                            audioClips={audioClips}
                             drawingClips={drawingClips}
-                            selectedEffectId={selectedEffectId}
-                            selectedDrawingClipId={selectedDrawingClipId}
+                            selectedKind={selectedKind}
+                            selectedClipId={selectedClipId}
                             selectedKeyframeId={selectedKeyframeId}
-                            onSelectEffect={setSelectedEffectId}
-                            onSelectDrawing={setSelectedDrawingClipId}
+                            snapEnabled={snapEnabled}
+                            snapStep={snapStep}
+                            zoom={timelineZoom}
+                            markers={markers}
+                            onSeek={handleSeek}
+                            onSelectClip={selectClip}
                             onSelectKeyframe={setSelectedKeyframeId}
-                            onSeek={handlePlayheadChange}
+                            onUpdateClipTiming={updateClipTiming}
+                            onUpdateKeyframeTime={updateKeyframeTime}
+                            onDeleteMarker={deleteMarker}
                         />
 
-                        <GlassCard
-                            sx={{
-                                p: 1.5,
-                                backgroundColor: "rgba(0,0,0,0.18)",
-                            }}
-                        >
+                        <GlassCard sx={{ p: 1.5, backgroundColor: "rgba(0,0,0,0.18)" }}>
                             <Stack
                                 direction={{ xs: "column", md: "row" }}
                                 spacing={1.25}
@@ -2245,112 +3512,119 @@ export function BrowserVideoEditor() {
                                 justifyContent="space-between"
                             >
                                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                    <Chip
-                                        label={support.mediaRecorder ? "MediaRecorder ready" : "No MediaRecorder"}
-                                        sx={supportChipSx(support.mediaRecorder)}
-                                    />
-                                    <Chip
-                                        label={support.canvasCapture ? "Canvas export ready" : "No Canvas capture"}
-                                        sx={supportChipSx(support.canvasCapture)}
-                                    />
-                                    <Chip
-                                        label={support.pointerEvents ? "Pointer drawing ready" : "No Pointer Events"}
-                                        sx={supportChipSx(support.pointerEvents)}
-                                    />
-                                    <Chip
-                                        label="USB tablets use pointer/pen input"
+                                    <SupportChip good={support.mediaRecorder} label={support.mediaRecorder ? "MediaRecorder ready" : "No MediaRecorder"} />
+                                    <SupportChip good={support.canvasCapture} label={support.canvasCapture ? "Canvas export ready" : "No Canvas capture"} />
+                                    <SupportChip good={support.pointerEvents} label={support.pointerEvents ? "Pointer drawing ready" : "No Pointer Events"} />
+                                    <SupportChip good={support.webAudio} label={support.webAudio ? "Web Audio ready" : "No Web Audio"} />
+                                </Stack>
+
+                                <Stack spacing={0.75} sx={{ minWidth: { md: 220 } }}>
+                                    <Typography sx={{ color: "rgba(255,255,255,0.62)", fontSize: 13, fontWeight: 850 }}>
+                                        Audio Meter
+                                    </Typography>
+                                    <LinearProgress
+                                        variant="determinate"
+                                        value={audioMeter * 100}
                                         sx={{
-                                            color: "white",
-                                            fontWeight: 800,
-                                            backgroundColor: "rgba(179,140,255,0.16)",
+                                            height: 8,
+                                            borderRadius: 999,
+                                            backgroundColor: "rgba(255,255,255,0.08)",
+                                            "& .MuiLinearProgress-bar": {
+                                                borderRadius: 999,
+                                                background: "linear-gradient(135deg, #7ef4b6, #9ee8ff)",
+                                            },
                                         }}
                                     />
                                 </Stack>
-
-                                <Typography sx={{ color: "rgba(255,255,255,0.62)", fontSize: 14 }}>
-                                    {status}
-                                </Typography>
                             </Stack>
                         </GlassCard>
+
+                        <Typography sx={{ color: "rgba(255,255,255,0.6)", fontSize: 14 }}>
+                            {status}
+                        </Typography>
                     </Stack>
                 </GlassCard>
             </Grid>
 
             <Grid item xs={12} lg={4}>
                 <Stack spacing={2.5}>
-                    <PlaybackPanel
-                        volume={volume}
-                        setVolume={setVolume}
-                        speed={speed}
-                        setSpeed={setSpeed}
-                        videoRef={videoRef}
+                    <AddClipPanel
+                        videoUrl={videoUrl}
+                        addVisualClip={addVisualClip}
+                        addAudioClip={addAudioClip}
+                        addDrawingClip={addDrawingClip}
+                        addTextBox={addTextBox}
                     />
 
-                    <EffectClipPanel
-                        videoUrl={videoUrl}
-                        isExporting={isExporting}
-                        effectClips={effectClips}
-                        selectedEffect={selectedEffect}
-                        selectedKeyframe={selectedKeyframe}
-                        selectedEffectId={selectedEffectId}
-                        selectedKeyframeId={selectedKeyframeId}
-                        trimStart={trimStart}
-                        trimEnd={trimEnd}
-                        duration={duration}
-                        currentTime={currentTime}
-                        addEffectClip={addEffectClip}
-                        deleteSelectedEffect={deleteSelectedEffect}
-                        updateSelectedEffect={updateSelectedEffect}
-                        updateSelectedEffectRange={updateSelectedEffectRange}
-                        addKeyframeAtPlayhead={addKeyframeAtPlayhead}
-                        deleteSelectedKeyframe={deleteSelectedKeyframe}
-                        updateSelectedKeyframe={updateSelectedKeyframe}
-                        updateSelectedKeyframeValue={updateSelectedKeyframeValue}
-                        applyPresetToSelectedKeyframe={applyPresetToSelectedKeyframe}
-                        setSelectedEffectId={setSelectedEffectId}
-                        setSelectedKeyframeId={setSelectedKeyframeId}
-                        seekTo={seekTo}
+                    <SelectedClipPanel
+                        selectedClip={selectedClip}
+                        selectedKind={selectedKind}
+                        updateSelectedClipPatch={updateSelectedClipPatch}
+                        deleteSelectedClip={deleteSelectedClip}
+                        duplicateSelectedClip={duplicateSelectedClip}
+                        splitSelectedClipAtPlayhead={splitSelectedClipAtPlayhead}
+                        nudgeSelectedClip={nudgeSelectedClip}
+                    />
+
+                    <ParameterEditor
+                        title={selectedParamType === "audio" ? "Audio Effect Parameters" : "Video Filter Parameters"}
+                        icon={selectedParamType === "audio" ? <GraphicEqRounded sx={{ color: "#7ef4b6" }} /> : <TuneRounded sx={{ color: "#9ee8ff" }} />}
+                        clip={selectedParamClip}
+                        keyframe={selectedKeyframe}
+                        paramDefs={selectedParamDefs}
+                        presets={selectedPresets}
+                        color={selectedParamColor}
+                        onAddKeyframe={addKeyframeAtPlayhead}
+                        onDeleteKeyframe={deleteSelectedKeyframe}
+                        onUpdateKeyframeTime={updateSelectedKeyframeTime}
+                        onUpdateParam={updateSelectedKeyframeValue}
+                        onApplyPreset={applyPresetToSelectedKeyframe}
                     />
 
                     <DrawingPanel
                         videoUrl={videoUrl}
-                        isExporting={isExporting}
                         drawingMode={drawingMode}
                         setDrawingMode={setDrawingMode}
                         brush={brush}
                         updateBrush={updateBrush}
-                        drawingClips={drawingClips}
                         selectedDrawingClip={selectedDrawingClip}
-                        selectedDrawingClipId={selectedDrawingClipId}
-                        setSelectedDrawingClipId={setSelectedDrawingClipId}
-                        addDrawingClip={addDrawingClip}
-                        updateSelectedDrawingClip={updateSelectedDrawingClip}
-                        updateSelectedDrawingClipRange={updateSelectedDrawingClipRange}
-                        deleteSelectedDrawingClip={deleteSelectedDrawingClip}
-                        clearSelectedDrawingStrokes={clearSelectedDrawingStrokes}
                         undoLastStroke={undoLastStroke}
-                        trimStart={trimStart}
-                        trimEnd={trimEnd}
-                        duration={duration}
+                        clearSelectedDrawingStrokes={clearSelectedDrawingStrokes}
                     />
 
                     <TextPanel
-                        videoUrl={videoUrl}
-                        isExporting={isExporting}
-                        addTextBox={addTextBox}
-                        textBoxes={textBoxes}
                         selectedText={selectedText}
+                        textBoxes={textBoxes}
                         selectedTextId={selectedTextId}
-                        setSelectedTextId={setSelectedTextId}
+                        setSelectedTextId={(id) => {
+                            setSelectedTextId(id);
+                            setSelectedKind(null);
+                            setSelectedClipId(null);
+                            setSelectedKeyframeId(null);
+                            setDrawingMode(false);
+                        }}
                         updateSelectedText={updateSelectedText}
                         deleteSelectedText={deleteSelectedText}
                     />
 
-                    <ExportPanel
+                    <PlaybackExportPanel
                         videoUrl={videoUrl}
+                        volume={volume}
+                        setVolume={setVolume}
+                        speed={speed}
+                        setSpeed={(nextSpeed) => {
+                            setSpeed(nextSpeed);
+
+                            if (videoRef.current) {
+                                videoRef.current.playbackRate = nextSpeed;
+                            }
+                        }}
+                        exportFps={exportFps}
+                        setExportFps={setExportFps}
                         isExporting={isExporting}
                         exportWebM={exportWebM}
                         downloadUrl={downloadUrl}
+                        fileName={fileName}
                     />
                 </Stack>
             </Grid>
@@ -2358,549 +3632,491 @@ export function BrowserVideoEditor() {
     );
 }
 
-function PlaybackPanel({ volume, setVolume, speed, setSpeed, videoRef }) {
+function statusChipSx(color) {
+    return {
+        color,
+        fontWeight: 900,
+        backgroundColor: "rgba(0,0,0,0.52)",
+        border: `1px solid ${alpha(color, 0.24)}`,
+    };
+}
+
+function TimelineToolbar({
+                             videoUrl,
+                             timelineZoom,
+                             setTimelineZoom,
+                             snapEnabled,
+                             setSnapEnabled,
+                             snapStep,
+                             setSnapStep,
+                             addMarkerAtPlayhead,
+                             totalClipCount,
+                             markerCount,
+                         }) {
     return (
-        <GlassCard>
-            <Stack spacing={2}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                    <TuneRounded sx={{ color: "#9ee8ff" }} />
-                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                        Playback controls
-                    </Typography>
+        <GlassCard sx={{ p: 1.5, backgroundColor: "rgba(0,0,0,0.16)" }}>
+            <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={1.25}
+                alignItems={{ xs: "stretch", md: "center" }}
+                justifyContent="space-between"
+            >
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Chip label={`${totalClipCount} clips`} sx={toolbarChipSx} />
+                    <Chip label={`${markerCount} markers`} sx={toolbarChipSx} />
+                    <Chip label={snapEnabled ? `Snap ${snapStep}s` : "Snap off"} sx={toolbarChipSx} />
+                    <Chip label={`Zoom ${timelineZoom.toFixed(1)}x`} sx={toolbarChipSx} />
                 </Stack>
 
-                <EditorSlider
-                    label="Volume"
-                    value={volume}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    display={`${Math.round(volume * 100)}%`}
-                    onChange={(value) => {
-                        setVolume(value);
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                    <Button
+                        disabled={!videoUrl}
+                        onClick={addMarkerAtPlayhead}
+                        startIcon={<AddRounded />}
+                        sx={miniControlSx}
+                    >
+                        Marker
+                    </Button>
 
-                        if (videoRef.current) {
-                            videoRef.current.volume = value;
-                        }
-                    }}
-                />
+                    <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography sx={{ color: "rgba(255,255,255,0.65)", fontWeight: 850, fontSize: 13 }}>
+                            Snap
+                        </Typography>
+                        <Switch
+                            checked={snapEnabled}
+                            onChange={(event) => setSnapEnabled(event.target.checked)}
+                        />
+                    </Stack>
 
-                <EditorSlider
-                    label="Speed"
-                    value={speed}
-                    min={0.25}
-                    max={2}
-                    step={0.05}
-                    display={`${speed.toFixed(2)}x`}
-                    onChange={(value) => {
-                        setSpeed(value);
+                    <TextField
+                        select
+                        size="small"
+                        label="Snap Step"
+                        value={snapStep}
+                        onChange={(event) => setSnapStep(Number(event.target.value))}
+                        sx={{ ...smallTextFieldSx, minWidth: 125 }}
+                    >
+                        {[0.01, 0.05, 0.1, 0.25, 0.5, 1].map((step) => (
+                            <MenuItem key={step} value={step}>
+                                {step}s
+                            </MenuItem>
+                        ))}
+                    </TextField>
 
-                        if (videoRef.current) {
-                            videoRef.current.playbackRate = value;
-                        }
-                    }}
-                />
+                    <Box sx={{ width: { xs: "100%", sm: 150 } }}>
+                        <Slider
+                            min={1}
+                            max={4}
+                            step={0.25}
+                            value={timelineZoom}
+                            onChange={(_, value) => setTimelineZoom(Number(value))}
+                            sx={{ color: "#9ee8ff" }}
+                        />
+                    </Box>
+                </Stack>
             </Stack>
         </GlassCard>
     );
 }
 
-function EffectClipPanel({
-                             videoUrl,
-                             isExporting,
-                             effectClips,
-                             selectedEffect,
-                             selectedKeyframe,
-                             selectedEffectId,
-                             selectedKeyframeId,
-                             trimStart,
-                             trimEnd,
-                             duration,
-                             addEffectClip,
-                             deleteSelectedEffect,
-                             updateSelectedEffect,
-                             updateSelectedEffectRange,
-                             addKeyframeAtPlayhead,
-                             deleteSelectedKeyframe,
-                             updateSelectedKeyframe,
-                             updateSelectedKeyframeValue,
-                             applyPresetToSelectedKeyframe,
-                             setSelectedEffectId,
-                             setSelectedKeyframeId,
-                             seekTo,
-                         }) {
+const toolbarChipSx = {
+    color: "white",
+    fontWeight: 850,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.1)",
+};
+
+function AddClipPanel({ videoUrl, addVisualClip, addAudioClip, addDrawingClip, addTextBox }) {
     return (
-        <>
-            <GlassCard>
-                <Stack spacing={2}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <TimelineRounded sx={{ color: "#9ee8ff" }} />
-                        <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                            Filter effect clips
-                        </Typography>
-                    </Stack>
-
-                    <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.65 }}>
-                        Effect clips apply filter parameters only during their selected duration.
+        <GlassCard>
+            <Stack spacing={2}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                    <LayersRounded sx={{ color: "#9ee8ff" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Add Timeline Clips
                     </Typography>
+                </Stack>
 
-                    <Grid container spacing={1}>
-                        {Object.entries(EFFECT_PRESETS).map(([key, preset]) => (
-                            <Grid item xs={6} key={key}>
-                                <Button
-                                    fullWidth
-                                    variant="outlined"
-                                    onClick={() => addEffectClip(key)}
-                                    disabled={!videoUrl || isExporting}
-                                    sx={smallActionButtonSx}
-                                >
-                                    + {preset.label}
-                                </Button>
-                            </Grid>
-                        ))}
-                    </Grid>
+                <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.65 }}>
+                    Visual and audio filters are both applied as timeline boxes with keyframed parameters.
+                </Typography>
 
-                    {effectClips.length > 0 && (
-                        <Stack spacing={1}>
-                            {effectClips.map((clip, index) => (
-                                <Button
-                                    key={clip.id}
-                                    onClick={() => {
-                                        setSelectedEffectId(clip.id);
-                                        setSelectedKeyframeId(clip.keyframes[0]?.id || null);
-                                    }}
-                                    variant={clip.id === selectedEffectId ? "contained" : "outlined"}
-                                    sx={listButtonSx(clip.id === selectedEffectId)}
-                                >
-                                    <span>{index + 1}. {clip.label}</span>
-                                    <span>{formatTime(clip.start)} - {formatTime(clip.end)}</span>
-                                </Button>
-                            ))}
-                        </Stack>
-                    )}
+                <Typography sx={{ fontWeight: 950, color: "#9ee8ff" }}>
+                    Video FX
+                </Typography>
 
-                    {selectedEffect && (
-                        <>
-                            <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                <Grid container spacing={1}>
+                    {Object.entries(VISUAL_PRESETS).map(([presetName, preset]) => (
+                        <Grid item xs={6} key={presetName}>
+                            <Button
+                                fullWidth
+                                disabled={!videoUrl}
+                                onClick={() => addVisualClip(presetName)}
+                                startIcon={<TuneRounded />}
+                                sx={smallActionButtonSx("#9ee8ff")}
+                            >
+                                {preset.label}
+                            </Button>
+                        </Grid>
+                    ))}
+                </Grid>
 
-                            <TextField
-                                label="Effect name"
-                                value={selectedEffect.label}
-                                onChange={(event) => updateSelectedEffect({ label: event.target.value })}
-                                InputLabelProps={{ sx: { color: "rgba(255,255,255,0.6)" } }}
-                                sx={inputSx}
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+
+                <Typography sx={{ fontWeight: 950, color: "#7ef4b6" }}>
+                    Audio FX
+                </Typography>
+
+                <Grid container spacing={1}>
+                    {Object.entries(AUDIO_PRESETS).map(([presetName, preset]) => (
+                        <Grid item xs={6} key={presetName}>
+                            <Button
+                                fullWidth
+                                disabled={!videoUrl}
+                                onClick={() => addAudioClip(presetName)}
+                                startIcon={<GraphicEqRounded />}
+                                sx={smallActionButtonSx("#7ef4b6")}
+                            >
+                                {preset.label}
+                            </Button>
+                        </Grid>
+                    ))}
+                </Grid>
+
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                    <Button
+                        disabled={!videoUrl}
+                        onClick={addDrawingClip}
+                        startIcon={<BrushRounded />}
+                        sx={smallActionButtonSx("#b38cff")}
+                    >
+                        Add Drawing Clip
+                    </Button>
+
+                    <Button
+                        disabled={!videoUrl}
+                        onClick={addTextBox}
+                        startIcon={<TextFieldsRounded />}
+                        sx={miniControlSx}
+                    >
+                        Add Text
+                    </Button>
+                </Stack>
+            </Stack>
+        </GlassCard>
+    );
+}
+
+function smallActionButtonSx(color) {
+    return {
+        justifyContent: "flex-start",
+        borderRadius: 999,
+        color,
+        fontWeight: 900,
+        border: `1px solid ${alpha(color, 0.24)}`,
+        backgroundColor: alpha(color, 0.055),
+        "&:hover": {
+            backgroundColor: alpha(color, 0.11),
+        },
+        "&.Mui-disabled": {
+            color: "rgba(255,255,255,0.25)",
+            borderColor: "rgba(255,255,255,0.08)",
+        },
+    };
+}
+
+function SelectedClipPanel({
+                               selectedClip,
+                               selectedKind,
+                               updateSelectedClipPatch,
+                               deleteSelectedClip,
+                               duplicateSelectedClip,
+                               splitSelectedClipAtPlayhead,
+                               nudgeSelectedClip,
+                           }) {
+    return (
+        <GlassCard>
+            <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                    <TimelineRounded sx={{ color: "#9ee8ff" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Selected Clip Controls
+                    </Typography>
+                </Stack>
+
+                {selectedClip ? (
+                    <>
+                        <TextField
+                            label="Clip Label"
+                            size="small"
+                            value={selectedClip.label}
+                            onChange={(event) => updateSelectedClipPatch({ label: event.target.value })}
+                            sx={smallTextFieldSx}
+                        />
+
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            <Chip
+                                label={selectedKind === "visual" ? "Video FX" : selectedKind === "audio" ? "Audio FX" : "Drawing"}
+                                sx={toolbarChipSx}
                             />
+                            <Chip
+                                label={`${formatTime(selectedClip.start)} - ${formatTime(selectedClip.end)}`}
+                                sx={toolbarChipSx}
+                            />
+                            <Chip
+                                label={selectedClip.locked ? "Locked" : "Unlocked"}
+                                sx={toolbarChipSx}
+                            />
+                        </Stack>
 
-                            <Stack
-                                direction="row"
-                                alignItems="center"
-                                justifyContent="space-between"
-                                sx={toggleRowSx}
-                            >
-                                <Typography sx={{ fontWeight: 850 }}>Enable effect clip</Typography>
-                                <Switch
-                                    checked={selectedEffect.enabled !== false}
-                                    onChange={(event) =>
-                                        updateSelectedEffect({ enabled: event.target.checked })
-                                    }
-                                />
-                            </Stack>
+                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                            <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                                Enabled
+                            </Typography>
+                            <Switch
+                                checked={selectedClip.enabled !== false}
+                                onChange={(event) => updateSelectedClipPatch({ enabled: event.target.checked })}
+                            />
+                        </Stack>
 
-                            <Box>
-                                <Stack direction="row" justifyContent="space-between">
-                                    <Typography sx={{ fontWeight: 850 }}>Effect duration</Typography>
-                                    <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
-                                        {formatTime(selectedEffect.start)} - {formatTime(selectedEffect.end)}
-                                    </Typography>
-                                </Stack>
+                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                            <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                                Lock Clip
+                            </Typography>
+                            <Switch
+                                checked={Boolean(selectedClip.locked)}
+                                onChange={(event) => updateSelectedClipPatch({ locked: event.target.checked })}
+                            />
+                        </Stack>
 
-                                <Slider
-                                    value={[selectedEffect.start, selectedEffect.end]}
-                                    min={trimStart}
-                                    max={trimEnd || duration || 1}
-                                    step={0.1}
-                                    onChange={updateSelectedEffectRange}
-                                    valueLabelDisplay="auto"
-                                    valueLabelFormat={formatTime}
-                                    sx={{ color: "#9ee8ff" }}
-                                />
-                            </Box>
-
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                             <Button
-                                variant="outlined"
-                                color="error"
-                                startIcon={<DeleteRounded />}
-                                onClick={deleteSelectedEffect}
-                                sx={{
-                                    borderRadius: 999,
-                                    fontWeight: 900,
-                                }}
+                                onClick={() => nudgeSelectedClip("move", -0.1)}
+                                disabled={selectedClip.locked}
+                                startIcon={<ChevronLeftRounded />}
+                                sx={miniControlSx}
                             >
-                                Delete Effect Clip
+                                Move
                             </Button>
-                        </>
-                    )}
-                </Stack>
-            </GlassCard>
-
-            <GlassCard>
-                <Stack spacing={2}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <KeyRounded sx={{ color: "#b38cff" }} />
-                        <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                            Filter keyframes
-                        </Typography>
-                    </Stack>
-
-                    {selectedEffect ? (
-                        <>
                             <Button
-                                variant="contained"
+                                onClick={() => nudgeSelectedClip("move", 0.1)}
+                                disabled={selectedClip.locked}
+                                endIcon={<ChevronRightRounded />}
+                                sx={miniControlSx}
+                            >
+                                Move
+                            </Button>
+                            <Button
+                                onClick={() => nudgeSelectedClip("start", -0.1)}
+                                disabled={selectedClip.locked}
+                                startIcon={<ChevronLeftRounded />}
+                                sx={miniControlSx}
+                            >
+                                Start
+                            </Button>
+                            <Button
+                                onClick={() => nudgeSelectedClip("start", 0.1)}
+                                disabled={selectedClip.locked}
+                                endIcon={<ChevronRightRounded />}
+                                sx={miniControlSx}
+                            >
+                                Start
+                            </Button>
+                            <Button
+                                onClick={() => nudgeSelectedClip("end", -0.1)}
+                                disabled={selectedClip.locked}
+                                startIcon={<ChevronLeftRounded />}
+                                sx={miniControlSx}
+                            >
+                                End
+                            </Button>
+                            <Button
+                                onClick={() => nudgeSelectedClip("end", 0.1)}
+                                disabled={selectedClip.locked}
+                                endIcon={<ChevronRightRounded />}
+                                sx={miniControlSx}
+                            >
+                                End
+                            </Button>
+                        </Stack>
+
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            <Button
+                                onClick={duplicateSelectedClip}
                                 startIcon={<AddRounded />}
-                                onClick={addKeyframeAtPlayhead}
-                                disabled={!videoUrl || isExporting}
-                                sx={primaryPillSx}
+                                sx={miniControlSx}
                             >
-                                Add Keyframe At Playhead
+                                Duplicate
                             </Button>
 
-                            <Stack spacing={1}>
-                                {sortKeyframes(selectedEffect.keyframes).map((keyframe, index) => (
-                                    <Button
-                                        key={keyframe.id}
-                                        onClick={() => {
-                                            setSelectedKeyframeId(keyframe.id);
-                                            seekTo(keyframe.time);
-                                        }}
-                                        variant={keyframe.id === selectedKeyframeId ? "contained" : "outlined"}
-                                        sx={listButtonSx(keyframe.id === selectedKeyframeId)}
-                                    >
-                                        <span>Keyframe {index + 1}</span>
-                                        <span>{formatTime(keyframe.time)}</span>
-                                    </Button>
-                                ))}
-                            </Stack>
+                            <Button
+                                onClick={splitSelectedClipAtPlayhead}
+                                disabled={selectedClip.locked}
+                                startIcon={<ContentCutRounded />}
+                                sx={miniControlSx}
+                            >
+                                Split
+                            </Button>
 
-                            {selectedKeyframe && (
-                                <>
-                                    <Box>
-                                        <Stack direction="row" justifyContent="space-between">
-                                            <Typography sx={{ fontWeight: 850 }}>Keyframe time</Typography>
-                                            <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
-                                                {formatTime(selectedKeyframe.time)}
-                                            </Typography>
-                                        </Stack>
+                            <Button
+                                onClick={() => updateSelectedClipPatch({ locked: !selectedClip.locked })}
+                                startIcon={selectedClip.locked ? <LockOpenRounded /> : <LockRounded />}
+                                sx={miniControlSx}
+                            >
+                                {selectedClip.locked ? "Unlock" : "Lock"}
+                            </Button>
+                        </Stack>
 
-                                        <Slider
-                                            value={selectedKeyframe.time}
-                                            min={selectedEffect.start}
-                                            max={selectedEffect.end}
-                                            step={0.1}
-                                            onChange={(_, value) =>
-                                                updateSelectedKeyframe({
-                                                    time: clamp(Number(value), selectedEffect.start, selectedEffect.end),
-                                                })
-                                            }
-                                            valueLabelDisplay="auto"
-                                            valueLabelFormat={formatTime}
-                                            sx={{ color: "#b38cff" }}
-                                        />
-                                    </Box>
-
-                                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                        {Object.entries(EFFECT_PRESETS).map(([key, preset]) => (
-                                            <Button
-                                                key={key}
-                                                size="small"
-                                                variant="outlined"
-                                                onClick={() => applyPresetToSelectedKeyframe(key)}
-                                                sx={smallActionButtonSx}
-                                            >
-                                                {preset.label}
-                                            </Button>
-                                        ))}
-                                    </Stack>
-
-                                    <EffectValueEditor
-                                        values={selectedKeyframe.values}
-                                        updateValue={updateSelectedKeyframeValue}
-                                    />
-
-                                    <Button
-                                        variant="outlined"
-                                        color="error"
-                                        startIcon={<DeleteRounded />}
-                                        onClick={deleteSelectedKeyframe}
-                                        sx={{
-                                            borderRadius: 999,
-                                            fontWeight: 900,
-                                        }}
-                                    >
-                                        Delete Keyframe
-                                    </Button>
-                                </>
-                            )}
-                        </>
-                    ) : (
-                        <Typography sx={{ color: "rgba(255,255,255,0.58)", lineHeight: 1.7 }}>
-                            Add or select an effect clip first, then keyframe its filter parameters.
-                        </Typography>
-                    )}
-                </Stack>
-            </GlassCard>
-        </>
+                        <Button
+                            color="error"
+                            onClick={deleteSelectedClip}
+                            startIcon={<DeleteRounded />}
+                            sx={{ borderRadius: 999, fontWeight: 900, alignSelf: "flex-start" }}
+                        >
+                            Delete Clip
+                        </Button>
+                    </>
+                ) : (
+                    <Typography sx={{ color: "rgba(255,255,255,0.58)", lineHeight: 1.7 }}>
+                        Click a timeline box to move it, resize it, lock it, duplicate it,
+                        split it at the playhead, or edit its keyframes.
+                    </Typography>
+                )}
+            </Stack>
+        </GlassCard>
     );
 }
 
 function DrawingPanel({
                           videoUrl,
-                          isExporting,
                           drawingMode,
                           setDrawingMode,
                           brush,
                           updateBrush,
-                          drawingClips,
                           selectedDrawingClip,
-                          selectedDrawingClipId,
-                          setSelectedDrawingClipId,
-                          addDrawingClip,
-                          updateSelectedDrawingClip,
-                          updateSelectedDrawingClipRange,
-                          deleteSelectedDrawingClip,
-                          clearSelectedDrawingStrokes,
                           undoLastStroke,
-                          trimStart,
-                          trimEnd,
-                          duration,
+                          clearSelectedDrawingStrokes,
                       }) {
     return (
         <GlassCard>
             <Stack spacing={2}>
                 <Stack direction="row" spacing={1} alignItems="center">
-                    <BrushRounded sx={{ color: "#9ee8ff" }} />
+                    <BrushRounded sx={{ color: "#b38cff" }} />
                     <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                        Drawing clips
+                        Drawing Brush
                     </Typography>
                 </Stack>
 
-                <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.65 }}>
-                    Drawing clips are timeline layers. Mouse, touch, stylus, and USB drawing pads
-                    work through pointer input. Pen pressure is used when your browser/device exposes it.
-                </Typography>
-
-                <Button
-                    variant="contained"
-                    startIcon={<AddRounded />}
-                    onClick={addDrawingClip}
-                    disabled={!videoUrl || isExporting}
-                    sx={primaryPillSx}
-                >
-                    Add Drawing Clip
-                </Button>
-
-                <Stack
-                    direction="row"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    sx={toggleRowSx}
-                >
-                    <Typography sx={{ fontWeight: 850 }}>Draw mode</Typography>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                        Drawing Mode
+                    </Typography>
                     <Switch
+                        disabled={!videoUrl}
                         checked={drawingMode}
                         onChange={(event) => setDrawingMode(event.target.checked)}
-                        disabled={!selectedDrawingClip}
                     />
                 </Stack>
 
-                {drawingClips.length > 0 && (
-                    <Stack spacing={1}>
-                        {drawingClips.map((clip, index) => (
-                            <Button
-                                key={clip.id}
-                                onClick={() => {
-                                    setSelectedDrawingClipId(clip.id);
-                                    updateBrush(clip.brush || DEFAULT_BRUSH);
-                                }}
-                                variant={clip.id === selectedDrawingClipId ? "contained" : "outlined"}
-                                sx={listButtonSx(clip.id === selectedDrawingClipId)}
-                            >
-                                <span>{index + 1}. {clip.label}</span>
-                                <span>{clip.strokes.length} strokes</span>
-                            </Button>
-                        ))}
-                    </Stack>
-                )}
+                <TextField
+                    label="Brush Color"
+                    type="color"
+                    size="small"
+                    value={brush.color}
+                    onChange={(event) => updateBrush({ color: event.target.value })}
+                    sx={smallTextFieldSx}
+                />
 
-                {selectedDrawingClip && (
-                    <>
-                        <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                <EditorSlider
+                    label="Size"
+                    value={brush.size}
+                    min={1}
+                    max={80}
+                    step={1}
+                    color="#b38cff"
+                    display={`${brush.size}px`}
+                    onChange={(value) => updateBrush({ size: value })}
+                />
 
-                        <TextField
-                            label="Drawing clip name"
-                            value={selectedDrawingClip.label}
-                            onChange={(event) => updateSelectedDrawingClip({ label: event.target.value })}
-                            InputLabelProps={{ sx: { color: "rgba(255,255,255,0.6)" } }}
-                            sx={inputSx}
-                        />
+                <EditorSlider
+                    label="Opacity"
+                    value={brush.opacity}
+                    min={1}
+                    max={100}
+                    step={1}
+                    color="#b38cff"
+                    display={`${brush.opacity}%`}
+                    onChange={(value) => updateBrush({ opacity: value })}
+                />
 
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={toggleRowSx}
-                        >
-                            <Typography sx={{ fontWeight: 850 }}>Enable drawing clip</Typography>
-                            <Switch
-                                checked={selectedDrawingClip.enabled !== false}
-                                onChange={(event) =>
-                                    updateSelectedDrawingClip({ enabled: event.target.checked })
-                                }
-                            />
-                        </Stack>
+                <EditorSlider
+                    label="Fade In"
+                    value={brush.fadeIn}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    color="#b38cff"
+                    display={`${brush.fadeIn.toFixed(2)}s`}
+                    onChange={(value) => updateBrush({ fadeIn: value })}
+                />
 
-                        <Box>
-                            <Stack direction="row" justifyContent="space-between">
-                                <Typography sx={{ fontWeight: 850 }}>Drawing duration</Typography>
-                                <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
-                                    {formatTime(selectedDrawingClip.start)} - {formatTime(selectedDrawingClip.end)}
-                                </Typography>
-                            </Stack>
+                <EditorSlider
+                    label="Fade Out"
+                    value={brush.fadeOut}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    color="#b38cff"
+                    display={`${brush.fadeOut.toFixed(2)}s`}
+                    onChange={(value) => updateBrush({ fadeOut: value })}
+                />
 
-                            <Slider
-                                value={[selectedDrawingClip.start, selectedDrawingClip.end]}
-                                min={trimStart}
-                                max={trimEnd || duration || 1}
-                                step={0.1}
-                                onChange={updateSelectedDrawingClipRange}
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={formatTime}
-                                sx={{ color: "#9ee8ff" }}
-                            />
-                        </Box>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                        Use pressure
+                    </Typography>
+                    <Switch
+                        checked={brush.usePressure}
+                        onChange={(event) => updateBrush({ usePressure: event.target.checked })}
+                    />
+                </Stack>
 
-                        <TextField
-                            label="Brush color"
-                            type="color"
-                            value={brush.color}
-                            onChange={(event) => updateBrush({ color: event.target.value })}
-                            InputLabelProps={{ sx: { color: "rgba(255,255,255,0.6)" } }}
-                            sx={inputSx}
-                        />
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                        Reveal stroke over time
+                    </Typography>
+                    <Switch
+                        checked={brush.revealOverTime}
+                        onChange={(event) => updateBrush({ revealOverTime: event.target.checked })}
+                    />
+                </Stack>
 
-                        <EditorSlider
-                            label="Brush size"
-                            value={brush.size}
-                            min={1}
-                            max={90}
-                            step={1}
-                            display={`${brush.size}px`}
-                            onChange={(value) => updateBrush({ size: value })}
-                        />
-
-                        <EditorSlider
-                            label="Brush opacity"
-                            value={brush.opacity}
-                            min={0}
-                            max={100}
-                            step={1}
-                            display={`${brush.opacity}%`}
-                            onChange={(value) => updateBrush({ opacity: value })}
-                        />
-
-                        <EditorSlider
-                            label="Fade in"
-                            value={brush.fadeIn}
-                            min={0}
-                            max={5}
-                            step={0.1}
-                            display={`${brush.fadeIn.toFixed(1)}s`}
-                            onChange={(value) => updateBrush({ fadeIn: value })}
-                        />
-
-                        <EditorSlider
-                            label="Fade out"
-                            value={brush.fadeOut}
-                            min={0}
-                            max={5}
-                            step={0.1}
-                            display={`${brush.fadeOut.toFixed(1)}s`}
-                            onChange={(value) => updateBrush({ fadeOut: value })}
-                        />
-
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={toggleRowSx}
-                        >
-                            <Typography sx={{ fontWeight: 850 }}>Use pen pressure</Typography>
-                            <Switch
-                                checked={brush.usePressure}
-                                onChange={(event) => updateBrush({ usePressure: event.target.checked })}
-                            />
-                        </Stack>
-
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={toggleRowSx}
-                        >
-                            <Typography sx={{ fontWeight: 850 }}>Reveal drawing over time</Typography>
-                            <Switch
-                                checked={brush.revealOverTime}
-                                onChange={(event) => updateBrush({ revealOverTime: event.target.checked })}
-                            />
-                        </Stack>
-
-                        <Grid container spacing={1}>
-                            <Grid item xs={6}>
-                                <Button
-                                    fullWidth
-                                    variant="outlined"
-                                    onClick={undoLastStroke}
-                                    sx={smallActionButtonSx}
-                                >
-                                    Undo Stroke
-                                </Button>
-                            </Grid>
-                            <Grid item xs={6}>
-                                <Button
-                                    fullWidth
-                                    variant="outlined"
-                                    onClick={clearSelectedDrawingStrokes}
-                                    sx={smallActionButtonSx}
-                                >
-                                    Clear Clip
-                                </Button>
-                            </Grid>
-                        </Grid>
-
-                        <Button
-                            variant="outlined"
-                            color="error"
-                            startIcon={<DeleteRounded />}
-                            onClick={deleteSelectedDrawingClip}
-                            sx={{
-                                borderRadius: 999,
-                                fontWeight: 900,
-                            }}
-                        >
-                            Delete Drawing Clip
-                        </Button>
-                    </>
-                )}
+                <Stack direction="row" spacing={1}>
+                    <Button
+                        onClick={undoLastStroke}
+                        disabled={!selectedDrawingClip || selectedDrawingClip.locked}
+                        sx={miniControlSx}
+                    >
+                        Undo Stroke
+                    </Button>
+                    <Button
+                        onClick={clearSelectedDrawingStrokes}
+                        disabled={!selectedDrawingClip || selectedDrawingClip.locked}
+                        sx={miniControlSx}
+                    >
+                        Clear Drawing
+                    </Button>
+                </Stack>
             </Stack>
         </GlassCard>
     );
 }
 
 function TextPanel({
-                       videoUrl,
-                       isExporting,
-                       addTextBox,
-                       textBoxes,
                        selectedText,
+                       textBoxes,
                        selectedTextId,
                        setSelectedTextId,
                        updateSelectedText,
@@ -2910,115 +4126,95 @@ function TextPanel({
         <GlassCard>
             <Stack spacing={2}>
                 <Stack direction="row" spacing={1} alignItems="center">
-                    <TextFieldsRounded sx={{ color: "#b38cff" }} />
+                    <TextFieldsRounded sx={{ color: "#9ee8ff" }} />
                     <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                        Text overlay
+                        Text Overlays
                     </Typography>
                 </Stack>
 
-                <Button
-                    variant="contained"
-                    startIcon={<AddRounded />}
-                    onClick={addTextBox}
-                    disabled={!videoUrl || isExporting}
-                    sx={primaryPillSx}
-                >
-                    Add Text Box
-                </Button>
-
                 {textBoxes.length > 0 && (
-                    <Stack spacing={1}>
+                    <TextField
+                        select
+                        label="Select text box"
+                        size="small"
+                        value={selectedTextId || ""}
+                        onChange={(event) => setSelectedTextId(event.target.value)}
+                        sx={smallTextFieldSx}
+                    >
                         {textBoxes.map((box, index) => (
-                            <Button
-                                key={box.id}
-                                onClick={() => setSelectedTextId(box.id)}
-                                variant={box.id === selectedTextId ? "contained" : "outlined"}
-                                sx={listButtonSx(box.id === selectedTextId)}
-                            >
-                                <span>Text Box {index + 1}</span>
-                                <span>{box.text.slice(0, 14) || "Empty"}</span>
-                            </Button>
+                            <MenuItem key={box.id} value={box.id}>
+                                Text {index + 1}: {String(box.text).slice(0, 20)}
+                            </MenuItem>
                         ))}
-                    </Stack>
+                    </TextField>
                 )}
 
                 {selectedText ? (
                     <>
                         <TextField
-                            label="Text"
-                            multiline
-                            minRows={2}
-                            value={selectedText.text}
-                            onChange={(event) =>
-                                updateSelectedText({ text: event.target.value })
-                            }
-                            InputLabelProps={{ sx: { color: "rgba(255,255,255,0.6)" } }}
-                            sx={inputSx}
+                            label="Text Color"
+                            type="color"
+                            size="small"
+                            value={selectedText.color}
+                            onChange={(event) => updateSelectedText({ color: event.target.value })}
+                            sx={smallTextFieldSx}
                         />
 
                         <TextField
-                            label="Text color"
-                            type="color"
-                            value={selectedText.color}
-                            onChange={(event) =>
-                                updateSelectedText({ color: event.target.value })
-                            }
-                            InputLabelProps={{ sx: { color: "rgba(255,255,255,0.6)" } }}
-                            sx={inputSx}
-                        />
+                            select
+                            label="Text Align"
+                            size="small"
+                            value={selectedText.align}
+                            onChange={(event) => updateSelectedText({ align: event.target.value })}
+                            sx={smallTextFieldSx}
+                        >
+                            <MenuItem value="left">Left</MenuItem>
+                            <MenuItem value="center">Center</MenuItem>
+                            <MenuItem value="right">Right</MenuItem>
+                        </TextField>
 
                         <EditorSlider
-                            label="Font size"
+                            label="Font Size"
                             value={selectedText.fontSize}
-                            min={18}
+                            min={12}
                             max={140}
                             step={1}
                             display={`${selectedText.fontSize}px`}
                             onChange={(value) => updateSelectedText({ fontSize: value })}
                         />
 
-                        <Grid container spacing={1}>
-                            <Grid item xs={6}>
-                                <EditorSlider
-                                    label="X"
-                                    value={selectedText.x}
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    display={`${Math.round(selectedText.x)}%`}
-                                    onChange={(value) => updateSelectedText({ x: value })}
-                                />
-                            </Grid>
+                        <EditorSlider
+                            label="Font Weight"
+                            value={selectedText.fontWeight}
+                            min={100}
+                            max={1000}
+                            step={50}
+                            display={`${selectedText.fontWeight}`}
+                            onChange={(value) => updateSelectedText({ fontWeight: value })}
+                        />
 
-                            <Grid item xs={6}>
-                                <EditorSlider
-                                    label="Y"
-                                    value={selectedText.y}
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    display={`${Math.round(selectedText.y)}%`}
-                                    onChange={(value) => updateSelectedText({ y: value })}
-                                />
-                            </Grid>
-                        </Grid>
+                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                            <Typography sx={{ color: "rgba(255,255,255,0.72)", fontWeight: 850 }}>
+                                Shadow
+                            </Typography>
+                            <Switch
+                                checked={selectedText.shadow}
+                                onChange={(event) => updateSelectedText({ shadow: event.target.checked })}
+                            />
+                        </Stack>
 
                         <Button
-                            variant="outlined"
                             color="error"
-                            startIcon={<DeleteRounded />}
                             onClick={deleteSelectedText}
-                            sx={{
-                                borderRadius: 999,
-                                fontWeight: 900,
-                            }}
+                            startIcon={<DeleteRounded />}
+                            sx={{ borderRadius: 999, fontWeight: 900, alignSelf: "flex-start" }}
                         >
-                            Delete Selected Text
+                            Delete Text
                         </Button>
                     </>
                 ) : (
                     <Typography sx={{ color: "rgba(255,255,255,0.58)", lineHeight: 1.7 }}>
-                        Add a text box, then select it to edit wording, size, color, and position.
+                        Add text from the clip panel, then select it here or click it in the preview.
                     </Typography>
                 )}
             </Stack>
@@ -3026,24 +4222,71 @@ function TextPanel({
     );
 }
 
-function ExportPanel({ videoUrl, isExporting, exportWebM, downloadUrl }) {
+function PlaybackExportPanel({
+                                 videoUrl,
+                                 volume,
+                                 setVolume,
+                                 speed,
+                                 setSpeed,
+                                 exportFps,
+                                 setExportFps,
+                                 isExporting,
+                                 exportWebM,
+                                 downloadUrl,
+                                 fileName,
+                             }) {
     return (
         <GlassCard>
-            <Stack spacing={1.5}>
-                <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                    Export
-                </Typography>
+            <Stack spacing={2}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                    <VolumeUpRounded sx={{ color: "#7ef4b6" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Playback and Export
+                    </Typography>
+                </Stack>
 
-                <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.7 }}>
-                    Export uses the canvas render, so your filters, drawings, text, and keyframes
-                    are included in the final WebM.
-                </Typography>
+                <EditorSlider
+                    label="Volume"
+                    value={volume}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    color="#7ef4b6"
+                    display={`${Math.round(volume * 100)}%`}
+                    onChange={setVolume}
+                />
+
+                <EditorSlider
+                    label="Speed"
+                    value={speed}
+                    min={0.25}
+                    max={2}
+                    step={0.05}
+                    color="#9ee8ff"
+                    display={`${speed.toFixed(2)}x`}
+                    onChange={setSpeed}
+                />
+
+                <TextField
+                    select
+                    label="Export FPS"
+                    size="small"
+                    value={exportFps}
+                    onChange={(event) => setExportFps(Number(event.target.value))}
+                    sx={smallTextFieldSx}
+                >
+                    {[24, 30, 60].map((fps) => (
+                        <MenuItem key={fps} value={fps}>
+                            {fps} FPS
+                        </MenuItem>
+                    ))}
+                </TextField>
 
                 <Button
-                    variant="contained"
-                    startIcon={<FileDownloadRounded />}
-                    onClick={exportWebM}
                     disabled={!videoUrl || isExporting}
+                    onClick={exportWebM}
+                    startIcon={<FileDownloadRounded />}
+                    variant="contained"
                     sx={primaryPillSx}
                 >
                     {isExporting ? "Exporting..." : "Export WebM"}
@@ -3051,17 +4294,10 @@ function ExportPanel({ videoUrl, isExporting, exportWebM, downloadUrl }) {
 
                 {downloadUrl && (
                     <Button
-                        component="a"
                         href={downloadUrl}
-                        download={`drawing-video-edit-${Date.now()}.webm`}
-                        variant="outlined"
+                        download={`edited-${fileName || "video"}.webm`}
                         startIcon={<FileDownloadRounded />}
-                        sx={{
-                            borderRadius: 999,
-                            color: "white",
-                            borderColor: "rgba(255,255,255,0.2)",
-                            fontWeight: 900,
-                        }}
+                        sx={miniControlSx}
                     >
                         Download Export
                     </Button>
@@ -3069,471 +4305,4 @@ function ExportPanel({ videoUrl, isExporting, exportWebM, downloadUrl }) {
             </Stack>
         </GlassCard>
     );
-}
-
-function TransportControls({
-                               videoUrl,
-                               isExporting,
-                               isPlaying,
-                               handlePlayPause,
-                               handleRestart,
-                               range,
-                               duration,
-                               trimStart,
-                               trimEnd,
-                               currentTime,
-                               handleRangeChange,
-                               handlePlayheadChange,
-                           }) {
-    return (
-        <Stack spacing={1.5}>
-            <Stack
-                direction={{ xs: "column", md: "row" }}
-                spacing={1.5}
-                alignItems={{ xs: "stretch", md: "center" }}
-            >
-                <Stack direction="row" spacing={1}>
-                    <Button
-                        variant="contained"
-                        startIcon={isPlaying ? <PauseRounded /> : <PlayArrowRounded />}
-                        onClick={handlePlayPause}
-                        disabled={!videoUrl || isExporting}
-                        sx={primaryPillSx}
-                    >
-                        {isPlaying ? "Pause" : "Play"}
-                    </Button>
-
-                    <Tooltip title="Restart from trim start">
-                        <span>
-                            <IconButton
-                                onClick={handleRestart}
-                                disabled={!videoUrl || isExporting}
-                                sx={{
-                                    width: 48,
-                                    height: 48,
-                                    color: "white",
-                                    backgroundColor: "rgba(255,255,255,0.08)",
-                                    border: panelBorder,
-                                }}
-                            >
-                                <RestartAltRounded />
-                            </IconButton>
-                        </span>
-                    </Tooltip>
-                </Stack>
-
-                <Box sx={{ flex: 1 }}>
-                    <Slider
-                        value={range}
-                        min={0}
-                        max={duration || 1}
-                        step={0.1}
-                        onChange={handleRangeChange}
-                        disabled={!videoUrl || isExporting}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={formatTime}
-                        sx={{
-                            color: "#9ee8ff",
-                            "& .MuiSlider-thumb": {
-                                boxShadow: "0 0 0 8px rgba(158,232,255,0.08)",
-                            },
-                        }}
-                    />
-
-                    <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}
-                    >
-                        <span>Start: {formatTime(trimStart)}</span>
-                        <span>Now: {formatTime(currentTime)}</span>
-                        <span>End: {formatTime(trimEnd)}</span>
-                    </Stack>
-                </Box>
-            </Stack>
-
-            <Box>
-                <Stack direction="row" justifyContent="space-between">
-                    <Typography sx={{ fontWeight: 850 }}>Playhead</Typography>
-                    <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
-                        {formatTime(currentTime)}
-                    </Typography>
-                </Stack>
-
-                <Slider
-                    value={currentTime}
-                    min={trimStart}
-                    max={trimEnd || duration || 1}
-                    step={0.05}
-                    onChange={handlePlayheadChange}
-                    disabled={!videoUrl || isExporting}
-                    sx={{
-                        color: "#b38cff",
-                    }}
-                />
-            </Box>
-        </Stack>
-    );
-}
-
-function TimelineView({
-                          duration,
-                          trimStart,
-                          trimEnd,
-                          currentTime,
-                          effectClips,
-                          drawingClips,
-                          selectedEffectId,
-                          selectedDrawingClipId,
-                          selectedKeyframeId,
-                          onSelectEffect,
-                          onSelectDrawing,
-                          onSelectKeyframe,
-                          onSeek,
-                      }) {
-    const safeDuration = Math.max(0.001, duration || trimEnd || 1);
-
-    const pct = (time) => clamp((time / safeDuration) * 100, 0, 100);
-
-    const handleClickTimeline = (event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const amount = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-        const nextTime = clamp(amount * safeDuration, trimStart, trimEnd || safeDuration);
-
-        onSeek(null, nextTime);
-    };
-
-    const rows = [
-        ...effectClips.map((clip) => ({
-            type: "effect",
-            clip,
-        })),
-        ...drawingClips.map((clip) => ({
-            type: "drawing",
-            clip,
-        })),
-    ];
-
-    return (
-        <GlassCard
-            sx={{
-                p: 1.5,
-                backgroundColor: "rgba(0,0,0,0.18)",
-            }}
-        >
-            <Stack spacing={1.5}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                    <TimelineRounded sx={{ color: "#9ee8ff" }} />
-                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                        Timeline layers
-                    </Typography>
-                </Stack>
-
-                <Box
-                    onClick={handleClickTimeline}
-                    sx={{
-                        position: "relative",
-                        minHeight: Math.max(132, 50 + rows.length * 46),
-                        borderRadius: 4,
-                        backgroundColor: "rgba(255,255,255,0.045)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        overflow: "hidden",
-                        cursor: "crosshair",
-                    }}
-                >
-                    <Box
-                        sx={{
-                            position: "absolute",
-                            top: 0,
-                            bottom: 0,
-                            left: `${pct(trimStart)}%`,
-                            width: `${Math.max(0, pct(trimEnd) - pct(trimStart))}%`,
-                            backgroundColor: "rgba(158,232,255,0.045)",
-                            borderLeft: "1px solid rgba(158,232,255,0.28)",
-                            borderRight: "1px solid rgba(158,232,255,0.28)",
-                        }}
-                    />
-
-                    <Box
-                        sx={{
-                            position: "absolute",
-                            top: 0,
-                            bottom: 0,
-                            left: `${pct(currentTime)}%`,
-                            width: 2,
-                            backgroundColor: "#ffffff",
-                            boxShadow: "0 0 18px rgba(255,255,255,0.8)",
-                            zIndex: 5,
-                        }}
-                    />
-
-                    {rows.length === 0 && (
-                        <Stack
-                            alignItems="center"
-                            justifyContent="center"
-                            sx={{
-                                minHeight: 130,
-                                color: "rgba(255,255,255,0.55)",
-                                textAlign: "center",
-                                px: 2,
-                            }}
-                        >
-                            <Typography sx={{ fontWeight: 800 }}>
-                                Add filter clips or drawing clips to build your edit.
-                            </Typography>
-                        </Stack>
-                    )}
-
-                    {rows.map(({ type, clip }, index) => {
-                        const left = pct(clip.start);
-                        const width = Math.max(1.5, pct(clip.end) - pct(clip.start));
-                        const selected =
-                            type === "effect"
-                                ? clip.id === selectedEffectId
-                                : clip.id === selectedDrawingClipId;
-
-                        return (
-                            <Box
-                                key={`${type}-${clip.id}`}
-                                onClick={(event) => {
-                                    event.stopPropagation();
-
-                                    if (type === "effect") {
-                                        onSelectEffect(clip.id);
-                                    } else {
-                                        onSelectDrawing(clip.id);
-                                    }
-                                }}
-                                sx={{
-                                    position: "absolute",
-                                    top: 18 + index * 46,
-                                    left: `${left}%`,
-                                    width: `${width}%`,
-                                    height: 30,
-                                    borderRadius: 999,
-                                    background: selected
-                                        ? "linear-gradient(135deg, #9ee8ff, #b38cff)"
-                                        : type === "effect"
-                                            ? "linear-gradient(135deg, rgba(158,232,255,0.45), rgba(179,140,255,0.38))"
-                                            : "linear-gradient(135deg, rgba(255,255,255,0.38), rgba(158,232,255,0.24))",
-                                    border: selected
-                                        ? "2px solid rgba(255,255,255,0.9)"
-                                        : "1px solid rgba(255,255,255,0.22)",
-                                    color: selected ? "#06101d" : "white",
-                                    fontWeight: 950,
-                                    fontSize: 12,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    px: 1.25,
-                                    overflow: "visible",
-                                    whiteSpace: "nowrap",
-                                    zIndex: selected ? 3 : 2,
-                                }}
-                            >
-                                {type === "effect" ? "FX" : "DRAW"} · {clip.label}
-
-                                {type === "effect" && clip.keyframes.map((keyframe) => {
-                                    const localPct = clamp(
-                                        ((keyframe.time - clip.start) / Math.max(0.001, clip.end - clip.start)) * 100,
-                                        0,
-                                        100
-                                    );
-
-                                    return (
-                                        <Box
-                                            key={keyframe.id}
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                onSelectEffect(clip.id);
-                                                onSelectKeyframe(keyframe.id);
-                                            }}
-                                            sx={{
-                                                position: "absolute",
-                                                left: `${localPct}%`,
-                                                top: "50%",
-                                                width: 12,
-                                                height: 12,
-                                                transform: "translate(-50%, -50%) rotate(45deg)",
-                                                borderRadius: 0.75,
-                                                backgroundColor:
-                                                    keyframe.id === selectedKeyframeId ? "#ffffff" : "#07111f",
-                                                border: "1px solid rgba(255,255,255,0.85)",
-                                                boxShadow:
-                                                    keyframe.id === selectedKeyframeId
-                                                        ? "0 0 18px rgba(255,255,255,0.95)"
-                                                        : "none",
-                                            }}
-                                        />
-                                    );
-                                })}
-                            </Box>
-                        );
-                    })}
-                </Box>
-
-                <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    sx={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}
-                >
-                    <span>{formatTime(0)}</span>
-                    <span>Trim: {formatTime(trimStart)} - {formatTime(trimEnd)}</span>
-                    <span>{formatTime(duration)}</span>
-                </Stack>
-            </Stack>
-        </GlassCard>
-    );
-}
-
-function ActiveStatusBadge({ values, drawingMode, selectedDrawingClip }) {
-    const isNeutral =
-        Math.round(values.brightness) === 100 &&
-        Math.round(values.contrast) === 100 &&
-        Math.round(values.saturation) === 100 &&
-        Math.round(values.blur) === 0 &&
-        Math.round(values.grayscale) === 0 &&
-        Math.round(values.sepia) === 0 &&
-        Math.round(values.hue) === 0 &&
-        Math.round(values.opacity) === 100 &&
-        Math.round(values.sharpen) === 0 &&
-        Math.round(values.noise) === 0 &&
-        Math.round(values.vignette) === 0;
-
-    return (
-        <Box
-            sx={{
-                position: "absolute",
-                top: 14,
-                left: 14,
-                zIndex: 5,
-                px: 1.25,
-                py: 0.75,
-                borderRadius: 999,
-                backgroundColor: "rgba(0,0,0,0.5)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                backdropFilter: "blur(12px)",
-            }}
-        >
-            <Typography sx={{ fontSize: 12, fontWeight: 950, color: drawingMode ? "#9ee8ff" : isNeutral ? "rgba(255,255,255,0.66)" : "#9ee8ff" }}>
-                {drawingMode && selectedDrawingClip
-                    ? `Drawing: ${selectedDrawingClip.label}`
-                    : isNeutral
-                        ? "No active filter"
-                        : `Active FX: B ${Math.round(values.brightness)} / C ${Math.round(values.contrast)} / Blur ${values.blur.toFixed(1)}`}
-            </Typography>
-        </Box>
-    );
-}
-
-function EffectValueEditor({ values, updateValue }) {
-    return (
-        <Stack spacing={1.35}>
-            {FILTER_PARAMETERS.map((param) => (
-                <EditorSlider
-                    key={param.key}
-                    label={param.label}
-                    value={values[param.key] ?? param.neutral}
-                    min={param.min}
-                    max={param.max}
-                    step={param.step}
-                    display={`${Number(values[param.key] ?? param.neutral).toFixed(param.step < 1 ? 1 : 0)}${param.unit}`}
-                    onChange={(value) => updateValue(param.key, value)}
-                />
-            ))}
-        </Stack>
-    );
-}
-
-function EditorSlider({
-                          label,
-                          value,
-                          min,
-                          max,
-                          step,
-                          display,
-                          onChange,
-                      }) {
-    return (
-        <Box>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography sx={{ fontWeight: 850 }}>{label}</Typography>
-                <Typography sx={{ color: "rgba(255,255,255,0.58)", fontSize: 13 }}>
-                    {display}
-                </Typography>
-            </Stack>
-
-            <Slider
-                value={Number(value)}
-                min={min}
-                max={max}
-                step={step}
-                onChange={(_, nextValue) => onChange(Number(nextValue))}
-                sx={{
-                    color: "#9ee8ff",
-                    "& .MuiSlider-rail": {
-                        color: alpha("#ffffff", 0.3),
-                    },
-                }}
-            />
-        </Box>
-    );
-}
-
-const inputSx = {
-    "& .MuiInputBase-root": {
-        color: "white",
-        borderRadius: 3,
-        backgroundColor: "rgba(255,255,255,0.055)",
-    },
-    "& .MuiOutlinedInput-notchedOutline": {
-        borderColor: "rgba(255,255,255,0.14)",
-    },
-    "&:hover .MuiOutlinedInput-notchedOutline": {
-        borderColor: "rgba(255,255,255,0.28)",
-    },
-    "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-        borderColor: "#9ee8ff",
-    },
-};
-
-const smallActionButtonSx = {
-    borderRadius: 999,
-    color: "white",
-    borderColor: "rgba(255,255,255,0.18)",
-    fontWeight: 900,
-    textTransform: "none",
-    "&:hover": {
-        borderColor: "rgba(158,232,255,0.55)",
-        backgroundColor: "rgba(158,232,255,0.08)",
-    },
-};
-
-const toggleRowSx = {
-    p: 1,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.045)",
-    border: "1px solid rgba(255,255,255,0.08)",
-};
-
-function listButtonSx(active) {
-    return {
-        justifyContent: "space-between",
-        borderRadius: 3,
-        color: active ? "#07111f" : "white",
-        fontWeight: 900,
-        borderColor: "rgba(255,255,255,0.16)",
-        background: active
-            ? "linear-gradient(135deg, #9ee8ff, #b38cff)"
-            : "rgba(255,255,255,0.04)",
-    };
-}
-
-function supportChipSx(active) {
-    return {
-        color: "white",
-        fontWeight: 800,
-        backgroundColor: active
-            ? "rgba(158,232,255,0.12)"
-            : "rgba(255,90,90,0.14)",
-    };
 }

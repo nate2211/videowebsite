@@ -13,14 +13,14 @@ import {
     AutoAwesomeRounded,
     BrushRounded,
     CloudUploadRounded,
-    ContentCutRounded,
     FileDownloadRounded,
+    GraphicEqRounded,
     KeyRounded,
     LayersRounded,
     MovieCreationRounded,
-    TextFieldsRounded,
     TimelineRounded,
     TuneRounded,
+    VolumeUpRounded,
 } from "@mui/icons-material";
 import {
     AppNavBar,
@@ -40,8 +40,8 @@ export default function Home() {
             <Container maxWidth="xl" sx={{ py: { xs: 4, md: 7 } }}>
                 <PageHero
                     eyebrow="Browser Video Editor"
-                    title="Edit, keyframe, and draw directly on video frames."
-                    description="Upload a video, create effect clips, keyframe filter parameters, draw with mouse or drawing tablet input, and export the final canvas-rendered edit from the browser."
+                    title="Edit video with canvas preview, timeline clips, filters, audio FX, and drawing."
+                    description="Upload a video, see it render directly inside the canvas, add resizable effect boxes on the timeline, animate filter and audio parameters with keyframes, draw over frames, and export the final browser-rendered WebM."
                     actions={
                         <Stack
                             direction={{ xs: "column", sm: "row" }}
@@ -88,33 +88,33 @@ export default function Home() {
                     <Grid item xs={12} md={4}>
                         <FeatureCard
                             icon={<TimelineRounded />}
-                            title="Effect duration clips"
-                            description="Create timeline clips so filters and drawing layers only apply during selected video ranges."
+                            title="Resizable timeline boxes"
+                            description="Click, drag, and resize visual, audio, and drawing clips directly on the timeline instead of using duration sliders."
                         />
                     </Grid>
 
                     <Grid item xs={12} md={4}>
                         <FeatureCard
                             icon={<KeyRounded />}
-                            title="Filter keyframes"
-                            description="Animate brightness, contrast, saturation, blur, grayscale, sepia, hue, opacity, sharpen, noise, and vignette."
+                            title="Keyframed parameters"
+                            description="Animate brightness, contrast, blur, hue, opacity, gain, pan, bass, treble, lowpass, highpass, echo mix, and feedback."
                         />
                     </Grid>
 
                     <Grid item xs={12} md={4}>
                         <FeatureCard
                             icon={<BrushRounded />}
-                            title="Frame drawing"
-                            description="Draw directly over the video using mouse, touch, stylus, or USB drawing pad pressure input."
+                            title="Canvas frame drawing"
+                            description="Draw over the current frame with mouse, touch, pen, or USB drawing tablet pressure input."
                         />
                     </Grid>
                 </Grid>
 
                 <Box sx={{ mt: { xs: 5, md: 8 } }}>
                     <SectionHeader
-                        eyebrow="Frontend-only stack"
-                        title="Canvas-rendered editor with drawing layers"
-                        description="The preview and export use the same canvas render path, so filters, keyframes, text, and drawings are all burned into the exported video."
+                        eyebrow="Frontend-only editor"
+                        title="One timeline for video filters, audio effects, drawings, and text"
+                        description="The hidden video element feeds the canvas preview. The same render path is used for export, so visual effects, drawings, and text are burned into the final canvas stream."
                     />
 
                     <Grid container spacing={2.5}>
@@ -124,7 +124,7 @@ export default function Home() {
                                     <Stack direction="row" spacing={1.25} alignItems="center">
                                         <TuneRounded sx={{ color: "#9ee8ff" }} />
                                         <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                                            Keyframeable filter parameters
+                                            Video filter clips
                                         </Typography>
                                     </Stack>
 
@@ -156,9 +156,9 @@ export default function Home() {
                                     </Stack>
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.72)", lineHeight: 1.8 }}>
-                                        Each effect clip stores its own start time, end time, and
-                                        keyframes. During playback, the editor calculates the active
-                                        values for the current frame and applies them to the canvas.
+                                        Each visual clip has a start, end, keyframes, and parameter values.
+                                        The editor evaluates active clips at the playhead and applies the result
+                                        directly to the canvas frame.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -168,37 +168,37 @@ export default function Home() {
                             <GlassCard>
                                 <Stack spacing={2}>
                                     <Stack direction="row" spacing={1.25} alignItems="center">
-                                        <LayersRounded sx={{ color: "#b38cff" }} />
+                                        <GraphicEqRounded sx={{ color: "#b38cff" }} />
                                         <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                                            Drawing layer features
+                                            Audio effect clips
                                         </Typography>
                                     </Stack>
 
                                     <Grid container spacing={1.25}>
                                         {[
                                             {
-                                                icon: <BrushRounded />,
-                                                text: "Draw with mouse, touch, pen, or tablet",
+                                                icon: <VolumeUpRounded />,
+                                                text: "Gain and fade automation",
                                             },
                                             {
-                                                icon: <TimelineRounded />,
-                                                text: "Drawing clips have start and end time",
+                                                icon: <GraphicEqRounded />,
+                                                text: "Bass, treble, lowpass, highpass",
                                             },
                                             {
                                                 icon: <TuneRounded />,
-                                                text: "Brush size, color, opacity, pressure",
+                                                text: "Delay mix, delay time, feedback",
                                             },
                                             {
-                                                icon: <KeyRounded />,
-                                                text: "Progressive reveal over duration",
+                                                icon: <TimelineRounded />,
+                                                text: "Audio clips resize like video clips",
                                             },
                                             {
-                                                icon: <TextFieldsRounded />,
-                                                text: "Text overlays still work",
+                                                icon: <LayersRounded />,
+                                                text: "Separate timeline tracks",
                                             },
                                             {
                                                 icon: <FileDownloadRounded />,
-                                                text: "Export includes drawings",
+                                                text: "Export uses processed audio when supported",
                                             },
                                         ].map((item) => (
                                             <Grid item xs={12} sm={6} key={item.text}>
@@ -247,13 +247,13 @@ export default function Home() {
                             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                                 <AutoAwesomeRounded sx={{ color: "#9ee8ff" }} />
                                 <Typography variant="h5" sx={{ fontWeight: 950 }}>
-                                    Adobe-style foundation
+                                    Adobe-style browser foundation
                                 </Typography>
                             </Stack>
 
-                            <Typography sx={{ color: "rgba(255,255,255,0.72)", maxWidth: 760 }}>
-                                This gives you the foundation for timeline layers, per-frame effects,
-                                brush strokes, pressure-aware drawing, and browser-side rendering.
+                            <Typography sx={{ color: "rgba(255,255,255,0.72)", maxWidth: 780 }}>
+                                This version gives you a stronger timeline system: clip boxes can be moved,
+                                trimmed, resized with handles, and edited with detailed video/audio parameters.
                             </Typography>
                         </Box>
 
