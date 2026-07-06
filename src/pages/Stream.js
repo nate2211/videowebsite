@@ -49,7 +49,7 @@ const RTC_CONFIG = {
 };
 
 const IPHONE_SCREEN_CAPTURE_LIMITATION =
-    "iPhone Safari/Chrome do not currently expose full-device browser screen capture through getDisplayMedia. The page will still stream iPhone camera video with microphone audio, and desktop browsers can use screen sharing with audio when supported.";
+    "Safari on iPhone does not currently expose full-device screen capture to normal web pages. This page probes every available browser screen-capture entry point, then falls back to iPhone camera video with microphone audio when iOS blocks screen capture.";
 
 const DISPLAY_MEDIA_OPTIONS = {
     video: {
@@ -108,6 +108,42 @@ function isIOSDevice() {
     );
 }
 
+function getDisplayCaptureFunction() {
+    if (typeof navigator === "undefined") {
+        return null;
+    }
+
+    if (navigator.mediaDevices?.getDisplayMedia) {
+        return navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    }
+
+    if (navigator.getDisplayMedia) {
+        return navigator.getDisplayMedia.bind(navigator);
+    }
+
+    if (navigator.webkitGetDisplayMedia) {
+        return navigator.webkitGetDisplayMedia.bind(navigator);
+    }
+
+    return null;
+}
+
+function getScreenCaptureSupportDetails() {
+    if (typeof navigator === "undefined") {
+        return {
+            hasModernDisplayMedia: false,
+            hasLegacyDisplayMedia: false,
+            hasWebkitDisplayMedia: false,
+        };
+    }
+
+    return {
+        hasModernDisplayMedia: Boolean(navigator.mediaDevices?.getDisplayMedia),
+        hasLegacyDisplayMedia: Boolean(navigator.getDisplayMedia),
+        hasWebkitDisplayMedia: Boolean(navigator.webkitGetDisplayMedia),
+    };
+}
+
 function getTrackSummary(stream) {
     if (!stream) {
         return "0 video track(s), 0 audio track(s)";
@@ -117,14 +153,20 @@ function getTrackSummary(stream) {
 }
 
 async function getDisplayMediaWithAudio() {
+    const displayCapture = getDisplayCaptureFunction();
+
+    if (!displayCapture) {
+        throw new Error("No browser screen-capture function is exposed on this device.");
+    }
+
     try {
-        return await navigator.mediaDevices.getDisplayMedia(DISPLAY_MEDIA_OPTIONS);
+        return await displayCapture(DISPLAY_MEDIA_OPTIONS);
     } catch (error) {
         if (error?.name !== "TypeError") {
             throw error;
         }
 
-        return navigator.mediaDevices.getDisplayMedia({
+        return displayCapture({
             video: true,
             audio: true,
         });
@@ -455,9 +497,12 @@ export default function Stream() {
     const supportsCamera =
         typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
 
-    const supportsDisplay =
-        typeof navigator !== "undefined" &&
-        Boolean(navigator.mediaDevices?.getDisplayMedia);
+    const screenCaptureSupport = useMemo(() => getScreenCaptureSupportDetails(), []);
+    const supportsDisplay = Boolean(
+        screenCaptureSupport.hasModernDisplayMedia ||
+        screenCaptureSupport.hasLegacyDisplayMedia ||
+        screenCaptureSupport.hasWebkitDisplayMedia
+    );
 
     useEffect(() => {
         roleRef.current = role;
@@ -951,10 +996,17 @@ export default function Stream() {
                 : "screen capture + audio";
 
         try {
-            if (!navigator.mediaDevices?.getDisplayMedia) {
+            const displayCapture = getDisplayCaptureFunction();
+            const support = getScreenCaptureSupportDetails();
+
+            addLog(
+                `Screen capture support probe: mediaDevices.getDisplayMedia=${support.hasModernDisplayMedia ? "yes" : "no"}, navigator.getDisplayMedia=${support.hasLegacyDisplayMedia ? "yes" : "no"}, navigator.webkitGetDisplayMedia=${support.hasWebkitDisplayMedia ? "yes" : "no"}.`
+            );
+
+            if (!displayCapture) {
                 if (preferIphone) {
                     addLog(IPHONE_SCREEN_CAPTURE_LIMITATION);
-                    addLog("Falling back to iPhone camera video with microphone audio so the desktop still receives live iPhone video/audio.");
+                    addLog("Safari iOS did not expose a callable screen-capture API. Falling back to iPhone camera video with microphone audio so the desktop still receives live iPhone video/audio.");
                     await startCamera("environment");
                     return;
                 }
@@ -1010,6 +1062,11 @@ export default function Stream() {
             );
         } catch (error) {
             addLog(`Screen capture failed: ${error.message}`);
+
+            if (preferIphone) {
+                addLog("Safari iOS screen capture failed or was blocked. Starting iPhone camera + microphone fallback.");
+                await startCamera("environment");
+            }
         }
     }, [addLog, isIOS, startCamera, startSenderWithStream, stopEverything]);
 
@@ -1191,6 +1248,18 @@ export default function Stream() {
                                     />
 
                                     <Chip
+                                        icon={<ScreenShareRounded />}
+                                        label={supportsDisplay ? "Screen API exposed" : "Screen API blocked"}
+                                        sx={{
+                                            color: supportsDisplay ? "#7ef4b6" : "#ffcf7a",
+                                            fontWeight: 900,
+                                            border: supportsDisplay
+                                                ? "1px solid rgba(126,244,182,0.22)"
+                                                : "1px solid rgba(255,207,122,0.25)",
+                                        }}
+                                    />
+
+                                    <Chip
                                         label={`Room ${cleanRoom(room)}`}
                                         sx={{
                                             color: "#b38cff",
@@ -1223,9 +1292,9 @@ export default function Stream() {
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.7 }}>
                                         The iPhone sender always supports camera video with microphone audio when HTTPS
-                                        permissions are granted. Full iPhone screen capture from a normal browser tab is
-                                        limited by iOS browser support, so the Screen + Audio button tries it first and
-                                        falls back to camera plus microphone when iOS does not expose screen capture.
+                                        permissions are granted. The Screen + Audio button now probes Safari iOS for
+                                        modern, legacy, and WebKit screen-capture functions. If iOS does not expose one,
+                                        it falls back to camera plus microphone instead of leaving the connection dead.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -1388,7 +1457,7 @@ export default function Stream() {
                                         title={role === "sender" ? "iPhone sender controls" : "Desktop receiver controls"}
                                         description={
                                             role === "sender"
-                                                ? "One tap starts the iPhone camera, microphone, signaling, and WebRTC offer."
+                                                ? "Camera mode streams immediately; Screen + Audio probes Safari screen-capture support before falling back to camera plus microphone."
                                                 : "Receiver mode waits for the iPhone sender and auto-answers the WebRTC offer."
                                         }
                                     />
