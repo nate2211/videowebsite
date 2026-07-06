@@ -53,6 +53,7 @@ import {
     TimelineRounded,
     TuneRounded,
     VolumeUpRounded,
+    SensorsRounded,
 } from "@mui/icons-material";
 
 export const primaryPillSx = {
@@ -647,6 +648,11 @@ export function AppNavBar() {
             label: "Video Editor",
             path: "/video",
             icon: <MovieCreationRounded fontSize="small" />,
+        },
+        {
+            label: "Stream",
+            path: "/stream",
+            icon: <SensorsRounded fontSize="small" />,
         },
     ];
 

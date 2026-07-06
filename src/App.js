@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import Home from "./pages/Home";
 import Video from "./pages/Video";
+import Stream from "./pages/Stream";
 
 const theme = createTheme({
   palette: {
@@ -39,6 +40,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/video" element={<Video />} />
+            <Route path="/stream" element={<Stream />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
