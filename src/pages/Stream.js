@@ -390,8 +390,7 @@ export default function Stream() {
 
     const supportsDisplay =
         typeof navigator !== "undefined" &&
-        Boolean(navigator.mediaDevices?.getDisplayMedia) &&
-        !isIOS;
+        Boolean(navigator.mediaDevices?.getDisplayMedia);
 
     useEffect(() => {
         roleRef.current = role;
@@ -832,22 +831,32 @@ export default function Stream() {
         addLog("Stopped stream and cleared signaling room.");
     }, [addLog, cleanupPeer, closeSignal, room, signalApiUrl]);
 
-    const startScreenCapture = useCallback(async () => {
+    const startScreenCapture = useCallback(async (options = {}) => {
+        const preferIphone = Boolean(options?.preferIphone || isIOS);
+        const captureLabel = typeof options?.label === "string"
+            ? options.label
+            : preferIphone
+                ? "iPhone screen + audio"
+                : "screen capture + audio";
+
         try {
             if (!navigator.mediaDevices?.getDisplayMedia) {
-                addLog("Screen capture is not available in this browser.");
-                return;
-            }
-
-            if (isIOS) {
-                addLog("iOS Safari cannot capture another iPhone app from a browser page. Use camera mode, AirPlay, QuickTime, or capture hardware.");
+                addLog(
+                    preferIphone
+                        ? "This iPhone browser does not expose screen capture to web pages. Update iOS/Safari and try again, or use AirPlay, QuickTime cable capture, or capture hardware."
+                        : "Screen capture is not available in this browser."
+                );
                 return;
             }
 
             setRole("sender");
             roleRef.current = "sender";
 
-            addLog("Requesting screen/window capture...");
+            addLog(
+                preferIphone
+                    ? "Requesting iPhone screen share with audio. If iOS shows a picker, choose the screen and enable audio when offered."
+                    : "Requesting screen/window capture with audio..."
+            );
 
             const screenStream = await navigator.mediaDevices.getDisplayMedia({
                 video: {
@@ -856,25 +865,34 @@ export default function Stream() {
                 audio: true,
             });
 
+            const screenAudioTracks = screenStream.getAudioTracks();
             let finalStream = screenStream;
 
-            try {
-                const micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                    video: false,
-                });
+            if (screenAudioTracks.length) {
+                addLog(`Screen share returned ${screenAudioTracks.length} audio track(s).`);
+            } else {
+                addLog("No screen/system audio track was returned. Trying microphone audio as the iPhone audio fallback.");
 
-                finalStream = new MediaStream([
-                    ...screenStream.getVideoTracks(),
-                    ...screenStream.getAudioTracks(),
-                    ...micStream.getAudioTracks(),
-                ]);
-            } catch {
-                finalStream = screenStream;
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                        video: false,
+                    });
+
+                    finalStream = new MediaStream([
+                        ...screenStream.getVideoTracks(),
+                        ...micStream.getAudioTracks(),
+                    ]);
+
+                    addLog("Microphone audio fallback added to the screen share.");
+                } catch (error) {
+                    addLog(`Microphone fallback unavailable: ${error.message}`);
+                    finalStream = screenStream;
+                }
             }
 
             finalStream.getVideoTracks()[0]?.addEventListener("ended", () => {
@@ -882,9 +900,11 @@ export default function Stream() {
                 stopEverything();
             });
 
-            await startSenderWithStream(finalStream, "desktop screen capture");
+            await startSenderWithStream(finalStream, captureLabel);
 
-            addLog("Screen capture stream started. Protected video may appear black or fail to capture.");
+            addLog(
+                `Screen share stream started with ${finalStream.getVideoTracks().length} video track(s) and ${finalStream.getAudioTracks().length} audio track(s). Protected video may appear black or fail to capture.`
+            );
         } catch (error) {
             addLog(`Screen capture failed: ${error.message}`);
         }
@@ -923,7 +943,7 @@ export default function Stream() {
 
             await makeSenderOffer();
         } else {
-            addLog("No active iPhone stream to reconnect. Tap Start iPhone Stream first.");
+            addLog("No active iPhone stream to reconnect. Start the iPhone Camera or iPhone Screen + Audio first.");
         }
     }, [addLog, cleanupPeer, connectReceiver, createPeerConnection, makeSenderOffer]);
 
@@ -1015,7 +1035,7 @@ export default function Stream() {
                                         fontSize: { xs: "2.5rem", sm: "4rem", md: "5.35rem" },
                                     }}
                                 >
-                                    One-tap iPhone camera streaming.
+                                    One-tap iPhone camera, screen, and audio streaming.
                                 </Typography>
 
                                 <Typography
@@ -1026,9 +1046,9 @@ export default function Stream() {
                                         lineHeight: 1.75,
                                     }}
                                 >
-                                    Desktop opens as the receiver and waits. iPhone opens as the sender and only needs
-                                    one tap to start the back camera. Signaling goes through your Cloudflare Pages API,
-                                    while WebRTC carries the live video and audio.
+                                    Desktop opens as the receiver and waits. iPhone opens as the sender and can start
+                                    the camera or try screen sharing with audio. Signaling goes through your Cloudflare
+                                    Pages API, while WebRTC carries the live video and audio tracks.
                                 </Typography>
 
                                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1081,14 +1101,14 @@ export default function Stream() {
                                     <Stack direction="row" spacing={1} alignItems="center">
                                         <WarningAmberRounded sx={{ color: "#ffcf7a" }} />
                                         <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                                            iPhone app capture note
+                                            iPhone screen/audio note
                                         </Typography>
                                     </Stack>
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.7 }}>
-                                        This streams the browser camera and microphone. iOS Safari cannot capture another
-                                        native app like YouTube TV directly from a webpage. For that, use AirPlay,
-                                        QuickTime cable capture, or capture hardware.
+                                        The screen-share button tries the browser Screen Capture API with audio. If your
+                                        iPhone browser does not expose screen capture, the page will tell you and you can
+                                        still use camera mode, AirPlay, QuickTime cable capture, or capture hardware.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -1130,7 +1150,7 @@ export default function Stream() {
                                         <EasyStep
                                             number={2}
                                             title="iPhone"
-                                            description="Open the sender link on your iPhone and tap Start iPhone Stream."
+                                            description="Open the sender link on your iPhone, then tap Camera or iPhone Screen + Audio."
                                         />
                                         <EasyStep
                                             number={3}
@@ -1299,8 +1319,50 @@ export default function Stream() {
                                                     fontSize: 17,
                                                 }}
                                             >
-                                                Start iPhone Stream
+                                                Start iPhone Camera
                                             </Button>
+
+                                            <Tooltip
+                                                title={
+                                                    supportsDisplay
+                                                        ? "Shares the iPhone screen when the browser exposes screen capture, and sends any returned screen/system audio track."
+                                                        : "Tap to check support. Many iPhone browsers still do not expose screen capture to web pages."
+                                                }
+                                            >
+                                                <span>
+                                                    <Button
+                                                        disabled={!isSecure}
+                                                        onClick={() => startScreenCapture({
+                                                            preferIphone: true,
+                                                            label: "iPhone screen + audio",
+                                                        })}
+                                                        startIcon={<ScreenShareRounded />}
+                                                        variant="contained"
+                                                        sx={{
+                                                            ...primaryPillSx,
+                                                            minHeight: 58,
+                                                            fontSize: 17,
+                                                            background: "linear-gradient(135deg, #b38cff, #9ee8ff)",
+                                                        }}
+                                                    >
+                                                        iPhone Screen + Audio
+                                                    </Button>
+                                                </span>
+                                            </Tooltip>
+
+                                            {!isSecure && (
+                                                <Typography sx={{ color: "#ffcf7a", lineHeight: 1.6, fontSize: 14 }}>
+                                                    Screen sharing requires HTTPS or localhost. Use your Cloudflare Pages
+                                                    HTTPS URL on the iPhone.
+                                                </Typography>
+                                            )}
+
+                                            {!supportsDisplay && isIOS && isSecure && (
+                                                <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.6, fontSize: 14 }}>
+                                                    This iPhone browser does not currently expose browser screen capture.
+                                                    The button will log the limitation and keep camera streaming available.
+                                                </Typography>
+                                            )}
 
                                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                                                 <Button
@@ -1312,15 +1374,18 @@ export default function Stream() {
                                                     Use Front Camera
                                                 </Button>
 
-                                                <Tooltip title={supportsDisplay ? "Desktop screen capture only" : "Not supported on iOS Safari"}>
+                                                <Tooltip title={supportsDisplay ? "Desktop screen/window/tab capture with supported audio" : "Screen capture is not exposed by this browser"}>
                                                     <span>
                                                         <Button
                                                             disabled={!supportsDisplay}
-                                                            onClick={startScreenCapture}
+                                                            onClick={() => startScreenCapture({
+                                                                preferIphone: false,
+                                                                label: "screen capture + audio",
+                                                            })}
                                                             startIcon={<ScreenShareRounded />}
                                                             sx={softButtonSx}
                                                         >
-                                                            Screen Capture
+                                                            Desktop Screen + Audio
                                                         </Button>
                                                     </span>
                                                 </Tooltip>
@@ -1335,8 +1400,8 @@ export default function Stream() {
                                             </Stack>
 
                                             <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.7 }}>
-                                                On iPhone, Safari will ask for camera and microphone permission. Keep this
-                                                page open while streaming.
+                                                On iPhone, Safari will ask for camera/microphone permission for camera mode.
+                                                Screen sharing also needs browser support for the Screen Capture API.
                                             </Typography>
                                         </Stack>
                                     ) : (
@@ -1483,7 +1548,7 @@ export default function Stream() {
                                         <EasyStep
                                             number={2}
                                             title="Open iPhone sender"
-                                            description="Use the iPhone link. Tap Start iPhone Stream."
+                                            description="Use the iPhone link. Tap Start iPhone Camera or iPhone Screen + Audio."
                                         />
                                         <EasyStep
                                             number={3}
