@@ -17,6 +17,7 @@ import {
     ContentCopyRounded,
     DesktopWindowsRounded,
     LinkRounded,
+    MicRounded,
     PhoneIphoneRounded,
     PlayArrowRounded,
     RestartAltRounded,
@@ -24,6 +25,7 @@ import {
     StopRounded,
     VideocamRounded,
     VisibilityRounded,
+    VolumeUpRounded,
     WarningAmberRounded,
 } from "@mui/icons-material";
 import {
@@ -44,6 +46,27 @@ const RTC_CONFIG = {
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
     ],
+};
+
+const IOS_SCREEN_SHARE_LIMITATION =
+    "iOS Safari can stream camera and microphone through getUserMedia, but it does not expose the iPhone's full Screen Mirroring/Broadcast screen stream to a normal web page. Use the iPhone Screen Share Hookup button for the real iOS routes and camera+mic fallback.";
+
+const DISPLAY_MEDIA_OPTIONS = {
+    video: {
+        frameRate: { ideal: 30, max: 60 },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+    },
+    audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        suppressLocalAudioPlayback: false,
+    },
+    systemAudio: "include",
+    windowAudio: "system",
+    surfaceSwitching: "include",
+    selfBrowserSurface: "include",
 };
 
 const softButtonSx = {
@@ -83,6 +106,214 @@ function isIOSDevice() {
         /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
     );
+}
+
+function getTrackSummary(stream) {
+    if (!stream) {
+        return "0 video track(s), 0 audio track(s)";
+    }
+
+    return `${stream.getVideoTracks().length} video track(s), ${stream.getAudioTracks().length} audio track(s)`;
+}
+
+function stopStream(stream) {
+    if (!stream) {
+        return;
+    }
+
+    stream.getTracks().forEach((track) => track.stop());
+}
+
+function getDisplayCaptureFunction() {
+    if (typeof navigator === "undefined") {
+        return null;
+    }
+
+    if (navigator.mediaDevices?.getDisplayMedia) {
+        return navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    }
+
+    if (navigator.getDisplayMedia) {
+        return navigator.getDisplayMedia.bind(navigator);
+    }
+
+    if (navigator.webkitGetDisplayMedia) {
+        return navigator.webkitGetDisplayMedia.bind(navigator);
+    }
+
+    return null;
+}
+
+function getScreenCaptureSupportDetails() {
+    if (typeof navigator === "undefined") {
+        return {
+            hasModernDisplayMedia: false,
+            hasLegacyDisplayMedia: false,
+            hasWebkitDisplayMedia: false,
+        };
+    }
+
+    return {
+        hasModernDisplayMedia: Boolean(navigator.mediaDevices?.getDisplayMedia),
+        hasLegacyDisplayMedia: Boolean(navigator.getDisplayMedia),
+        hasWebkitDisplayMedia: Boolean(navigator.webkitGetDisplayMedia),
+    };
+}
+
+function getAudioConstraints() {
+    return {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+    };
+}
+
+function getCameraConstraintAttempts(facingMode) {
+    return [
+        {
+            audio: getAudioConstraints(),
+            video: {
+                facingMode: { ideal: facingMode },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30, max: 30 },
+            },
+        },
+        {
+            audio: getAudioConstraints(),
+            video: {
+                facingMode,
+                width: { ideal: 960 },
+                height: { ideal: 540 },
+                frameRate: { ideal: 24, max: 30 },
+            },
+        },
+        {
+            audio: true,
+            video: {
+                facingMode,
+            },
+        },
+        {
+            audio: true,
+            video: true,
+        },
+    ];
+}
+
+async function getMicrophoneOnlyStream() {
+    return navigator.mediaDevices.getUserMedia({
+        audio: getAudioConstraints(),
+        video: false,
+    });
+}
+
+async function getCameraOnlyStream(facingMode) {
+    const attempts = [
+        {
+            audio: false,
+            video: {
+                facingMode: { ideal: facingMode },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30, max: 30 },
+            },
+        },
+        {
+            audio: false,
+            video: {
+                facingMode,
+            },
+        },
+        {
+            audio: false,
+            video: true,
+        },
+    ];
+
+    let lastError = null;
+
+    for (const constraints of attempts) {
+        try {
+            return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error("Camera-only stream failed.");
+}
+
+async function getIOSCameraAndMicStream(facingMode, addLog) {
+    let lastError = null;
+
+    for (const constraints of getCameraConstraintAttempts(facingMode)) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            if (stream.getVideoTracks().length && stream.getAudioTracks().length) {
+                return stream;
+            }
+
+            if (stream.getVideoTracks().length && !stream.getAudioTracks().length) {
+                try {
+                    const micStream = await getMicrophoneOnlyStream();
+                    return new MediaStream([
+                        ...stream.getVideoTracks(),
+                        ...micStream.getAudioTracks(),
+                    ]);
+                } catch (error) {
+                    addLog(`Camera worked, but microphone fallback failed: ${error.message}`);
+                    return stream;
+                }
+            }
+
+            stopStream(stream);
+        } catch (error) {
+            lastError = error;
+            addLog(`iPhone capture retry after ${error.name || "Error"}: ${error.message}`);
+        }
+    }
+
+    try {
+        const cameraStream = await getCameraOnlyStream(facingMode);
+
+        try {
+            const micStream = await getMicrophoneOnlyStream();
+            return new MediaStream([
+                ...cameraStream.getVideoTracks(),
+                ...micStream.getAudioTracks(),
+            ]);
+        } catch (error) {
+            addLog(`Camera-only fallback is live, but microphone failed: ${error.message}`);
+            return cameraStream;
+        }
+    } catch (cameraError) {
+        lastError = cameraError || lastError;
+    }
+
+    throw lastError || new Error("iPhone camera and microphone could not be started.");
+}
+
+async function getDisplayMediaWithAudio() {
+    const displayCapture = getDisplayCaptureFunction();
+
+    if (!displayCapture) {
+        throw new Error("No browser screen-capture function is exposed on this device.");
+    }
+
+    try {
+        return await displayCapture(DISPLAY_MEDIA_OPTIONS);
+    } catch (error) {
+        if (error?.name !== "TypeError") {
+            throw error;
+        }
+
+        return displayCapture({
+            video: true,
+            audio: true,
+        });
+    }
 }
 
 function getStoredRoom() {
@@ -380,18 +611,24 @@ export default function Stream() {
     const [logs, setLogs] = useState([]);
     const [localActive, setLocalActive] = useState(false);
     const [remoteActive, setRemoteActive] = useState(false);
+    const [localAudioActive, setLocalAudioActive] = useState(false);
+    const [localVideoActive, setLocalVideoActive] = useState(false);
+    const [remoteAudioActive, setRemoteAudioActive] = useState(false);
+    const [remoteVideoActive, setRemoteVideoActive] = useState(false);
 
     const isIOS = useMemo(() => isIOSDevice(), []);
     const isSecure = typeof window !== "undefined" ? window.isSecureContext : false;
     const shouldAutoStartReceiver = useMemo(() => parseAutoStart(), []);
+    const screenCaptureSupport = useMemo(() => getScreenCaptureSupportDetails(), []);
 
     const supportsCamera =
         typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
 
-    const supportsDisplay =
-        typeof navigator !== "undefined" &&
-        Boolean(navigator.mediaDevices?.getDisplayMedia) &&
-        !isIOS;
+    const supportsDisplay = Boolean(
+        screenCaptureSupport.hasModernDisplayMedia ||
+        screenCaptureSupport.hasLegacyDisplayMedia ||
+        screenCaptureSupport.hasWebkitDisplayMedia
+    );
 
     useEffect(() => {
         roleRef.current = role;
@@ -447,9 +684,11 @@ export default function Stream() {
         setPeerState("idle");
 
         if (stopTracks && localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((track) => track.stop());
+            stopStream(localStreamRef.current);
             localStreamRef.current = null;
             setLocalActive(false);
+            setLocalAudioActive(false);
+            setLocalVideoActive(false);
             setStreamLabel("");
 
             if (localVideoRef.current) {
@@ -462,6 +701,8 @@ export default function Stream() {
         }
 
         setRemoteActive(false);
+        setRemoteAudioActive(false);
+        setRemoteVideoActive(false);
     }, []);
 
     const sendSignal = useCallback(async (payload) => {
@@ -500,6 +741,27 @@ export default function Stream() {
         }
     }, [addLog]);
 
+    const unlockReceiverPlayback = useCallback(async () => {
+        const video = remoteVideoRef.current;
+
+        if (!video) {
+            return false;
+        }
+
+        video.muted = false;
+        video.volume = 1;
+        video.playsInline = true;
+
+        try {
+            await video.play();
+            addLog("Desktop receiver playback/audio is enabled.");
+            return true;
+        } catch (error) {
+            addLog(`Desktop audio needs one click/tap to unlock: ${error.message}`);
+            return false;
+        }
+    }, [addLog]);
+
     const createPeerConnection = useCallback((nextRole) => {
         cleanupPeer(false);
 
@@ -532,6 +794,8 @@ export default function Stream() {
             ) {
                 if (nextRole === "receiver") {
                     setRemoteActive(false);
+                    setRemoteAudioActive(false);
+                    setRemoteVideoActive(false);
                 }
             }
         };
@@ -551,21 +815,29 @@ export default function Stream() {
             pc.ontrack = (event) => {
                 addLog(`Received ${event.track.kind} track.`);
 
+                event.track.enabled = true;
+                event.track.onmute = () => addLog(`Remote ${event.track.kind} track muted by browser/source.`);
+                event.track.onunmute = () => addLog(`Remote ${event.track.kind} track unmuted.`);
+                event.track.onended = () => addLog(`Remote ${event.track.kind} track ended.`);
+
                 remoteStream.addTrack(event.track);
                 setRemoteActive(true);
+                setRemoteVideoActive(remoteStream.getVideoTracks().length > 0);
+                setRemoteAudioActive(remoteStream.getAudioTracks().length > 0);
 
                 const video = remoteVideoRef.current;
 
                 if (video) {
-                    video.play().catch(() => {
-                        addLog("Browser blocked autoplay. Tap/click the receiver video once.");
-                    });
+                    video.srcObject = remoteStream;
+                    video.muted = false;
+                    video.volume = 1;
+                    unlockReceiverPlayback();
                 }
             };
         }
 
         return pc;
-    }, [addLog, cleanupPeer, sendSignal]);
+    }, [addLog, cleanupPeer, sendSignal, unlockReceiverPlayback]);
 
     const handleSignal = useCallback(async (payload) => {
         if (!payload) {
@@ -741,6 +1013,10 @@ export default function Stream() {
     const startSenderWithStream = useCallback(async (stream, label) => {
         cleanupPeer(false);
 
+        if (localStreamRef.current && localStreamRef.current !== stream) {
+            stopStream(localStreamRef.current);
+        }
+
         await clearSignalRoom({
             apiUrl: signalApiUrl || STREAM_SIGNAL_API_URL,
             room,
@@ -750,11 +1026,23 @@ export default function Stream() {
 
         localStreamRef.current = stream;
         setLocalActive(true);
+        setLocalVideoActive(stream.getVideoTracks().length > 0);
+        setLocalAudioActive(stream.getAudioTracks().length > 0);
         setStreamLabel(label);
+
+        stream.getTracks().forEach((track) => {
+            track.enabled = true;
+            track.onended = () => addLog(`Local ${track.kind} track ended.`);
+            track.onmute = () => addLog(`Local ${track.kind} track muted by browser/source.`);
+            track.onunmute = () => addLog(`Local ${track.kind} track unmuted.`);
+        });
+
+        addLog(`Starting sender stream with ${getTrackSummary(stream)}.`);
 
         if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
             localVideoRef.current.muted = true;
+            localVideoRef.current.playsInline = true;
 
             try {
                 await localVideoRef.current.play();
@@ -790,35 +1078,28 @@ export default function Stream() {
                 return;
             }
 
+            if (!isSecure) {
+                addLog("iPhone camera and microphone require HTTPS. Open the Cloudflare Pages HTTPS URL on the iPhone.");
+                return;
+            }
+
             setRole("sender");
             roleRef.current = "sender";
 
             addLog(`Requesting ${facingMode === "user" ? "front" : "back"} camera and microphone...`);
 
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
-                video: {
-                    facingMode: { ideal: facingMode },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30, max: 30 },
-                },
-            });
+            const stream = await getIOSCameraAndMicStream(facingMode, addLog);
 
             await startSenderWithStream(
                 stream,
-                facingMode === "user" ? "iPhone front camera" : "iPhone back camera"
+                facingMode === "user" ? "iPhone front camera + mic" : "iPhone back camera + mic"
             );
 
-            addLog("Camera stream started.");
+            addLog(`Camera stream started with ${getTrackSummary(stream)}.`);
         } catch (error) {
             addLog(`Camera start failed: ${error.message}`);
         }
-    }, [addLog, startSenderWithStream]);
+    }, [addLog, isSecure, startSenderWithStream]);
 
     const stopEverything = useCallback(() => {
         cleanupPeer(true);
@@ -834,47 +1115,46 @@ export default function Stream() {
 
     const startScreenCapture = useCallback(async () => {
         try {
-            if (!navigator.mediaDevices?.getDisplayMedia) {
-                addLog("Screen capture is not available in this browser.");
+            if (isIOS) {
+                const support = getScreenCaptureSupportDetails();
+
+                addLog(
+                    `iOS screen-capture probe: mediaDevices.getDisplayMedia=${support.hasModernDisplayMedia ? "yes" : "no"}, navigator.getDisplayMedia=${support.hasLegacyDisplayMedia ? "yes" : "no"}, navigator.webkitGetDisplayMedia=${support.hasWebkitDisplayMedia ? "yes" : "no"}.`
+                );
+                addLog(IOS_SCREEN_SHARE_LIMITATION);
+                addLog("Starting iPhone camera + microphone fallback for this WebRTC room.");
+
+                await startCamera("environment");
                 return;
             }
 
-            if (isIOS) {
-                addLog("iOS Safari cannot capture another iPhone app from a browser page. Use camera mode, AirPlay, QuickTime, or capture hardware.");
+            if (!getDisplayCaptureFunction()) {
+                addLog("Screen capture is not available in this browser.");
                 return;
             }
 
             setRole("sender");
             roleRef.current = "sender";
 
-            addLog("Requesting screen/window capture...");
+            addLog("Requesting desktop/browser screen capture with audio...");
 
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: { ideal: 30, max: 60 },
-                },
-                audio: true,
-            });
+            const screenStream = await getDisplayMediaWithAudio();
 
             let finalStream = screenStream;
 
-            try {
-                const micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                    video: false,
-                });
+            if (!screenStream.getAudioTracks().length) {
+                try {
+                    const micStream = await getMicrophoneOnlyStream();
 
-                finalStream = new MediaStream([
-                    ...screenStream.getVideoTracks(),
-                    ...screenStream.getAudioTracks(),
-                    ...micStream.getAudioTracks(),
-                ]);
-            } catch {
-                finalStream = screenStream;
+                    finalStream = new MediaStream([
+                        ...screenStream.getVideoTracks(),
+                        ...micStream.getAudioTracks(),
+                    ]);
+                    addLog("Screen capture had no audio track, so microphone fallback was added.");
+                } catch (error) {
+                    addLog(`Microphone fallback unavailable: ${error.message}`);
+                    finalStream = screenStream;
+                }
             }
 
             finalStream.getVideoTracks()[0]?.addEventListener("ended", () => {
@@ -884,11 +1164,11 @@ export default function Stream() {
 
             await startSenderWithStream(finalStream, "desktop screen capture");
 
-            addLog("Screen capture stream started. Protected video may appear black or fail to capture.");
+            addLog(`Screen capture stream started with ${getTrackSummary(finalStream)}. Protected video may appear black or fail to capture.`);
         } catch (error) {
             addLog(`Screen capture failed: ${error.message}`);
         }
-    }, [addLog, isIOS, startSenderWithStream, stopEverything]);
+    }, [addLog, isIOS, startCamera, startSenderWithStream, stopEverything]);
 
     const connectReceiver = useCallback(async () => {
         try {
@@ -897,6 +1177,7 @@ export default function Stream() {
             setRole("receiver");
             roleRef.current = "receiver";
 
+            await unlockReceiverPlayback();
             await connectSignal();
             createPeerConnection("receiver");
 
@@ -904,7 +1185,7 @@ export default function Stream() {
         } catch (error) {
             addLog(`Receiver connect failed: ${error.message}`);
         }
-    }, [addLog, cleanupPeer, connectSignal, createPeerConnection]);
+    }, [addLog, cleanupPeer, connectSignal, createPeerConnection, unlockReceiverPlayback]);
 
     const reconnectCurrentSide = useCallback(async () => {
         if (roleRef.current === "receiver") {
@@ -923,7 +1204,7 @@ export default function Stream() {
 
             await makeSenderOffer();
         } else {
-            addLog("No active iPhone stream to reconnect. Tap Start iPhone Stream first.");
+            addLog("No active iPhone stream to reconnect. Tap Start iPhone Camera + Mic first.");
         }
     }, [addLog, cleanupPeer, connectReceiver, createPeerConnection, makeSenderOffer]);
 
@@ -1015,7 +1296,7 @@ export default function Stream() {
                                         fontSize: { xs: "2.5rem", sm: "4rem", md: "5.35rem" },
                                     }}
                                 >
-                                    One-tap iPhone camera streaming.
+                                    One-tap iPhone camera, microphone, and screen-share hookup.
                                 </Typography>
 
                                 <Typography
@@ -1026,9 +1307,9 @@ export default function Stream() {
                                         lineHeight: 1.75,
                                     }}
                                 >
-                                    Desktop opens as the receiver and waits. iPhone opens as the sender and only needs
-                                    one tap to start the back camera. Signaling goes through your Cloudflare Pages API,
-                                    while WebRTC carries the live video and audio.
+                                    Desktop opens as the receiver and waits. iPhone opens as the sender and starts
+                                    camera plus microphone with iOS-safe fallbacks. Signaling goes through your
+                                    Cloudflare Pages API, while WebRTC carries the live video and audio tracks.
                                 </Typography>
 
                                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1049,6 +1330,30 @@ export default function Stream() {
                                             color: isSecure ? "#7ef4b6" : "#ffcf7a",
                                             fontWeight: 900,
                                             border: isSecure
+                                                ? "1px solid rgba(126,244,182,0.22)"
+                                                : "1px solid rgba(255,207,122,0.25)",
+                                        }}
+                                    />
+
+                                    <Chip
+                                        icon={<MicRounded />}
+                                        label={supportsCamera ? "Camera/mic ready" : "Camera/mic unavailable"}
+                                        sx={{
+                                            color: supportsCamera ? "#7ef4b6" : "#ffcf7a",
+                                            fontWeight: 900,
+                                            border: supportsCamera
+                                                ? "1px solid rgba(126,244,182,0.22)"
+                                                : "1px solid rgba(255,207,122,0.25)",
+                                        }}
+                                    />
+
+                                    <Chip
+                                        icon={<ScreenShareRounded />}
+                                        label={supportsDisplay ? "Browser screen API exposed" : "Browser screen API blocked"}
+                                        sx={{
+                                            color: supportsDisplay ? "#7ef4b6" : "#ffcf7a",
+                                            fontWeight: 900,
+                                            border: supportsDisplay
                                                 ? "1px solid rgba(126,244,182,0.22)"
                                                 : "1px solid rgba(255,207,122,0.25)",
                                         }}
@@ -1086,9 +1391,10 @@ export default function Stream() {
                                     </Stack>
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.7 }}>
-                                        This streams the browser camera and microphone. iOS Safari cannot capture another
-                                        native app like YouTube TV directly from a webpage. For that, use AirPlay,
-                                        QuickTime cable capture, or capture hardware.
+                                        This page makes iPhone Safari camera and microphone work through WebRTC. True
+                                        iPhone screen sharing uses Apple routes outside a normal web page: Screen
+                                        Mirroring/AirPlay to a Mac or receiver, QuickTime USB capture, capture hardware,
+                                        or a native iOS Broadcast Upload Extension.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -1130,7 +1436,7 @@ export default function Stream() {
                                         <EasyStep
                                             number={2}
                                             title="iPhone"
-                                            description="Open the sender link on your iPhone and tap Start iPhone Stream."
+                                            description="Open the sender link on your iPhone and tap Start iPhone Camera + Mic."
                                         />
                                         <EasyStep
                                             number={3}
@@ -1299,7 +1605,7 @@ export default function Stream() {
                                                     fontSize: 17,
                                                 }}
                                             >
-                                                Start iPhone Stream
+                                                Start iPhone Camera + Mic
                                             </Button>
 
                                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1312,15 +1618,23 @@ export default function Stream() {
                                                     Use Front Camera
                                                 </Button>
 
-                                                <Tooltip title={supportsDisplay ? "Desktop screen capture only" : "Not supported on iOS Safari"}>
+                                                <Tooltip
+                                                    title={
+                                                        isIOS
+                                                            ? "Shows the iOS screen-share hookup route and starts camera + microphone fallback for this WebRTC room."
+                                                            : supportsDisplay
+                                                                ? "Starts browser screen capture with audio when the browser exposes getDisplayMedia."
+                                                                : "Screen capture is not exposed by this browser."
+                                                    }
+                                                >
                                                     <span>
                                                         <Button
-                                                            disabled={!supportsDisplay}
+                                                            disabled={!isIOS && !supportsDisplay}
                                                             onClick={startScreenCapture}
                                                             startIcon={<ScreenShareRounded />}
                                                             sx={softButtonSx}
                                                         >
-                                                            Screen Capture
+                                                            {isIOS ? "iPhone Screen Share Hookup" : "Screen Capture"}
                                                         </Button>
                                                     </span>
                                                 </Tooltip>
@@ -1336,7 +1650,8 @@ export default function Stream() {
 
                                             <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.7 }}>
                                                 On iPhone, Safari will ask for camera and microphone permission. Keep this
-                                                page open while streaming.
+                                                page open while streaming. If permission fails, check Safari site settings
+                                                for Camera and Microphone, then tap Reconnect Stream.
                                             </Typography>
                                         </Stack>
                                     ) : (
@@ -1361,6 +1676,14 @@ export default function Stream() {
                                                     sx={softButtonSx}
                                                 >
                                                     Reconnect Receiver
+                                                </Button>
+
+                                                <Button
+                                                    onClick={unlockReceiverPlayback}
+                                                    startIcon={<VolumeUpRounded />}
+                                                    sx={softButtonSx}
+                                                >
+                                                    Enable Receiver Audio
                                                 </Button>
 
                                                 <Button
@@ -1408,6 +1731,50 @@ export default function Stream() {
                                                 color: "#9ee8ff",
                                                 fontWeight: 900,
                                                 border: "1px solid rgba(158,232,255,0.22)",
+                                            }}
+                                        />
+
+                                        <Chip
+                                            label={localVideoActive ? "Local camera active" : "Local camera waiting"}
+                                            sx={{
+                                                color: localVideoActive ? "#7ef4b6" : "rgba(255,255,255,0.58)",
+                                                fontWeight: 900,
+                                                border: localVideoActive
+                                                    ? "1px solid rgba(126,244,182,0.25)"
+                                                    : "1px solid rgba(255,255,255,0.14)",
+                                            }}
+                                        />
+
+                                        <Chip
+                                            label={localAudioActive ? "Local mic active" : "Local mic waiting"}
+                                            sx={{
+                                                color: localAudioActive ? "#7ef4b6" : "rgba(255,255,255,0.58)",
+                                                fontWeight: 900,
+                                                border: localAudioActive
+                                                    ? "1px solid rgba(126,244,182,0.25)"
+                                                    : "1px solid rgba(255,255,255,0.14)",
+                                            }}
+                                        />
+
+                                        <Chip
+                                            label={remoteVideoActive ? "Remote video received" : "Remote video waiting"}
+                                            sx={{
+                                                color: remoteVideoActive ? "#7ef4b6" : "rgba(255,255,255,0.58)",
+                                                fontWeight: 900,
+                                                border: remoteVideoActive
+                                                    ? "1px solid rgba(126,244,182,0.25)"
+                                                    : "1px solid rgba(255,255,255,0.14)",
+                                            }}
+                                        />
+
+                                        <Chip
+                                            label={remoteAudioActive ? "Remote audio received" : "Remote audio waiting"}
+                                            sx={{
+                                                color: remoteAudioActive ? "#7ef4b6" : "rgba(255,255,255,0.58)",
+                                                fontWeight: 900,
+                                                border: remoteAudioActive
+                                                    ? "1px solid rgba(126,244,182,0.25)"
+                                                    : "1px solid rgba(255,255,255,0.14)",
                                             }}
                                         />
 
@@ -1483,12 +1850,39 @@ export default function Stream() {
                                         <EasyStep
                                             number={2}
                                             title="Open iPhone sender"
-                                            description="Use the iPhone link. Tap Start iPhone Stream."
+                                            description="Use the iPhone link. Tap Start iPhone Camera + Mic."
                                         />
                                         <EasyStep
                                             number={3}
                                             title="Fix connection quickly"
                                             description="Use Reconnect Stream or New Clean Room if stale signaling messages get in the way."
+                                        />
+                                    </Stack>
+
+                                    <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+
+                                    <SectionHeader
+                                        compact
+                                        eyebrow="iOS screen share"
+                                        title="How to hook up true iPhone screen sharing"
+                                        description="Safari can send camera and mic from this page. For the actual iPhone screen, use one of Apple's external capture routes."
+                                    />
+
+                                    <Stack spacing={1.5}>
+                                        <EasyStep
+                                            number={1}
+                                            title="Screen Mirroring / AirPlay"
+                                            description="On iPhone, open Control Center, tap Screen Mirroring, then pick your Mac or AirPlay receiver. Keep this page for camera/mic WebRTC if you want both."
+                                        />
+                                        <EasyStep
+                                            number={2}
+                                            title="QuickTime USB capture"
+                                            description="Plug iPhone into a Mac, open QuickTime Player, choose New Movie Recording, then select the iPhone as the camera and microphone source."
+                                        />
+                                        <EasyStep
+                                            number={3}
+                                            title="Native Broadcast extension"
+                                            description="For full in-browser style routing, build a small native iOS app with ReplayKit Broadcast Upload Extension and forward frames/audio to your WebRTC server."
                                         />
                                     </Stack>
                                 </Stack>
