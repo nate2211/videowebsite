@@ -48,8 +48,8 @@ const RTC_CONFIG = {
     ],
 };
 
-const IOS_SCREEN_SHARE_LIMITATION =
-    "iOS Safari can stream camera and microphone through getUserMedia, but it does not expose the iPhone's full Screen Mirroring/Broadcast screen stream to a normal web page. Use the iPhone Screen Share Hookup button for the real iOS routes and camera+mic fallback.";
+const IOS_BROWSER_SCREEN_CAPTURE_LIMITATION =
+    "iPhone Safari can stream camera and microphone through getUserMedia, but it does not expose full iPhone screen capture to normal browser pages. This page only uses browser APIs, so iPhone screen capture is disabled and camera + microphone remains available.";
 
 const DISPLAY_MEDIA_OPTIONS = {
     video: {
@@ -1121,10 +1121,7 @@ export default function Stream() {
                 addLog(
                     `iOS screen-capture probe: mediaDevices.getDisplayMedia=${support.hasModernDisplayMedia ? "yes" : "no"}, navigator.getDisplayMedia=${support.hasLegacyDisplayMedia ? "yes" : "no"}, navigator.webkitGetDisplayMedia=${support.hasWebkitDisplayMedia ? "yes" : "no"}.`
                 );
-                addLog(IOS_SCREEN_SHARE_LIMITATION);
-                addLog("Starting iPhone camera + microphone fallback for this WebRTC room.");
-
-                await startCamera("environment");
+                addLog(IOS_BROWSER_SCREEN_CAPTURE_LIMITATION);
                 return;
             }
 
@@ -1168,7 +1165,7 @@ export default function Stream() {
         } catch (error) {
             addLog(`Screen capture failed: ${error.message}`);
         }
-    }, [addLog, isIOS, startCamera, startSenderWithStream, stopEverything]);
+    }, [addLog, isIOS, startSenderWithStream, stopEverything]);
 
     const connectReceiver = useCallback(async () => {
         try {
@@ -1296,7 +1293,7 @@ export default function Stream() {
                                         fontSize: { xs: "2.5rem", sm: "4rem", md: "5.35rem" },
                                     }}
                                 >
-                                    One-tap iPhone camera, microphone, and screen-share hookup.
+                                    Browser-only WebRTC camera, microphone, and screen receiver.
                                 </Typography>
 
                                 <Typography
@@ -1308,8 +1305,8 @@ export default function Stream() {
                                     }}
                                 >
                                     Desktop opens as the receiver and waits. iPhone opens as the sender and starts
-                                    camera plus microphone with iOS-safe fallbacks. Signaling goes through your
-                                    Cloudflare Pages API, while WebRTC carries the live video and audio tracks.
+                                    camera plus microphone with iOS-safe fallbacks. Supported desktop browsers can
+                                    also share a browser screen/window through getDisplayMedia.
                                 </Typography>
 
                                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1391,10 +1388,9 @@ export default function Stream() {
                                     </Stack>
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.7 }}>
-                                        This page makes iPhone Safari camera and microphone work through WebRTC. True
-                                        iPhone screen sharing uses Apple routes outside a normal web page: Screen
-                                        Mirroring/AirPlay to a Mac or receiver, QuickTime USB capture, capture hardware,
-                                        or a native iOS Broadcast Upload Extension.
+                                        This page only uses browser features: camera, microphone, browser screen
+                                        capture when exposed, WebRTC, and HTTPS fetch calls to your Cloudflare signal
+                                        API. It does not use local-network discovery or receiver protocols outside the browser.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -1620,21 +1616,19 @@ export default function Stream() {
 
                                                 <Tooltip
                                                     title={
-                                                        isIOS
-                                                            ? "Shows the iOS screen-share hookup route and starts camera + microphone fallback for this WebRTC room."
-                                                            : supportsDisplay
-                                                                ? "Starts browser screen capture with audio when the browser exposes getDisplayMedia."
-                                                                : "Screen capture is not exposed by this browser."
+                                                        supportsDisplay && !isIOS
+                                                            ? "Starts browser screen capture with audio when this browser exposes getDisplayMedia."
+                                                            : "Screen capture is not available from this browser. On iPhone Safari, use Camera + Mic."
                                                     }
                                                 >
                                                     <span>
                                                         <Button
-                                                            disabled={!isIOS && !supportsDisplay}
+                                                            disabled={isIOS || !supportsDisplay}
                                                             onClick={startScreenCapture}
                                                             startIcon={<ScreenShareRounded />}
                                                             sx={softButtonSx}
                                                         >
-                                                            {isIOS ? "iPhone Screen Share Hookup" : "Screen Capture"}
+                                                            Browser Screen Capture
                                                         </Button>
                                                     </span>
                                                 </Tooltip>
@@ -1863,26 +1857,26 @@ export default function Stream() {
 
                                     <SectionHeader
                                         compact
-                                        eyebrow="iOS screen share"
-                                        title="How to hook up true iPhone screen sharing"
-                                        description="Safari can send camera and mic from this page. For the actual iPhone screen, use one of Apple's external capture routes."
+                                        eyebrow="Browser limits"
+                                        title="What this page can receive"
+                                        description="Everything here is possible from normal browser APIs and your Cloudflare Pages signal endpoint."
                                     />
 
                                     <Stack spacing={1.5}>
                                         <EasyStep
                                             number={1}
-                                            title="Screen Mirroring / AirPlay"
-                                            description="On iPhone, open Control Center, tap Screen Mirroring, then pick your Mac or AirPlay receiver. Keep this page for camera/mic WebRTC if you want both."
+                                            title="iPhone camera + microphone"
+                                            description="Works in Safari over HTTPS after the user taps the sender button and grants Camera/Microphone permission."
                                         />
                                         <EasyStep
                                             number={2}
-                                            title="QuickTime USB capture"
-                                            description="Plug iPhone into a Mac, open QuickTime Player, choose New Movie Recording, then select the iPhone as the camera and microphone source."
+                                            title="Desktop browser screen capture"
+                                            description="Works only when the sender browser exposes getDisplayMedia. The page disables this control when the API is blocked."
                                         />
                                         <EasyStep
                                             number={3}
-                                            title="Native Broadcast extension"
-                                            description="For full in-browser style routing, build a small native iOS app with ReplayKit Broadcast Upload Extension and forward frames/audio to your WebRTC server."
+                                            title="WebRTC receiver"
+                                            description="The desktop page receives remote browser media tracks over WebRTC after Cloudflare handles signaling."
                                         />
                                     </Stack>
                                 </Stack>
