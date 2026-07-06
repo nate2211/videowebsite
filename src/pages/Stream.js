@@ -51,6 +51,9 @@ const RTC_CONFIG = {
 const IOS_BROWSER_SCREEN_CAPTURE_LIMITATION =
     "iPhone Safari can stream camera and microphone through getUserMedia, but it does not expose full iPhone screen capture to normal browser pages. This page only uses browser APIs, so iPhone screen capture is disabled and camera + microphone remains available.";
 
+const DEVICE_PAIRING_NOTE =
+    "Use the same room code on any two browsers: desktop to desktop, phone to desktop, desktop to phone, or phone to phone. One browser starts as Sender and the other starts as Receiver.";
+
 const DISPLAY_MEDIA_OPTIONS = {
     video: {
         frameRate: { ideal: 30, max: 60 },
@@ -244,7 +247,7 @@ async function getCameraOnlyStream(facingMode) {
     throw lastError || new Error("Camera-only stream failed.");
 }
 
-async function getIOSCameraAndMicStream(facingMode, addLog) {
+async function getCameraAndMicStream(facingMode, addLog) {
     let lastError = null;
 
     for (const constraints of getCameraConstraintAttempts(facingMode)) {
@@ -271,7 +274,7 @@ async function getIOSCameraAndMicStream(facingMode, addLog) {
             stopStream(stream);
         } catch (error) {
             lastError = error;
-            addLog(`iPhone capture retry after ${error.name || "Error"}: ${error.message}`);
+            addLog(`Camera/microphone capture retry after ${error.name || "Error"}: ${error.message}`);
         }
     }
 
@@ -292,7 +295,7 @@ async function getIOSCameraAndMicStream(facingMode, addLog) {
         lastError = cameraError || lastError;
     }
 
-    throw lastError || new Error("iPhone camera and microphone could not be started.");
+    throw lastError || new Error("Camera and microphone could not be started.");
 }
 
 async function getDisplayMediaWithAudio() {
@@ -754,10 +757,10 @@ export default function Stream() {
 
         try {
             await video.play();
-            addLog("Desktop receiver playback/audio is enabled.");
+            addLog("Receiver playback/audio is enabled.");
             return true;
         } catch (error) {
-            addLog(`Desktop audio needs one click/tap to unlock: ${error.message}`);
+            addLog(`Receiver audio needs one click/tap to unlock: ${error.message}`);
             return false;
         }
     }, [addLog]);
@@ -869,7 +872,7 @@ export default function Stream() {
                     sdp: pc.localDescription,
                 });
 
-                addLog("Received iPhone offer and sent desktop answer.");
+                addLog("Received sender offer and sent receiver answer.");
                 return;
             }
 
@@ -882,7 +885,7 @@ export default function Stream() {
                 await pc.setRemoteDescription(description);
                 await flushPendingCandidates();
 
-                addLog("Desktop answer accepted. Stream should connect now.");
+                addLog("Receiver answer accepted. Stream should connect now.");
                 return;
             }
         }
@@ -973,7 +976,7 @@ export default function Stream() {
         const stream = localStreamRef.current;
 
         if (!stream) {
-            addLog("Start the iPhone camera first.");
+            addLog("Start camera/microphone or browser screen capture first.");
             return;
         }
 
@@ -1002,7 +1005,7 @@ export default function Stream() {
                 sdp: pc.localDescription,
             });
 
-            addLog("Sent iPhone WebRTC offer to desktop receiver.");
+            addLog("Sent WebRTC offer to receiver.");
         } catch (error) {
             addLog(`Offer failed: ${error.message}`);
         } finally {
@@ -1079,7 +1082,7 @@ export default function Stream() {
             }
 
             if (!isSecure) {
-                addLog("iPhone camera and microphone require HTTPS. Open the Cloudflare Pages HTTPS URL on the iPhone.");
+                addLog("Camera and microphone require HTTPS. Open the Cloudflare Pages HTTPS URL on the sender device.");
                 return;
             }
 
@@ -1088,11 +1091,11 @@ export default function Stream() {
 
             addLog(`Requesting ${facingMode === "user" ? "front" : "back"} camera and microphone...`);
 
-            const stream = await getIOSCameraAndMicStream(facingMode, addLog);
+            const stream = await getCameraAndMicStream(facingMode, addLog);
 
             await startSenderWithStream(
                 stream,
-                facingMode === "user" ? "iPhone front camera + mic" : "iPhone back camera + mic"
+                facingMode === "user" ? "front camera + mic" : "back camera + mic"
             );
 
             addLog(`Camera stream started with ${getTrackSummary(stream)}.`);
@@ -1133,7 +1136,7 @@ export default function Stream() {
             setRole("sender");
             roleRef.current = "sender";
 
-            addLog("Requesting desktop/browser screen capture with audio...");
+            addLog("Requesting browser screen capture with audio...");
 
             const screenStream = await getDisplayMediaWithAudio();
 
@@ -1159,7 +1162,7 @@ export default function Stream() {
                 stopEverything();
             });
 
-            await startSenderWithStream(finalStream, "desktop screen capture");
+            await startSenderWithStream(finalStream, "browser screen capture");
 
             addLog(`Screen capture stream started with ${getTrackSummary(finalStream)}. Protected video may appear black or fail to capture.`);
         } catch (error) {
@@ -1178,7 +1181,7 @@ export default function Stream() {
             await connectSignal();
             createPeerConnection("receiver");
 
-            addLog("Desktop receiver is armed. Now start the iPhone sender.");
+            addLog("Receiver is armed. Now start the sender device.");
         } catch (error) {
             addLog(`Receiver connect failed: ${error.message}`);
         }
@@ -1201,7 +1204,7 @@ export default function Stream() {
 
             await makeSenderOffer();
         } else {
-            addLog("No active iPhone stream to reconnect. Tap Start iPhone Camera + Mic first.");
+            addLog("No active sender stream to reconnect. Tap Start Camera + Mic or Browser Screen Capture first.");
         }
     }, [addLog, cleanupPeer, connectReceiver, createPeerConnection, makeSenderOffer]);
 
@@ -1215,11 +1218,11 @@ export default function Stream() {
     }, [addLog]);
 
     const copySenderLink = useCallback(async () => {
-        await copyText(buildShareUrl(room, "sender"), "iPhone sender link");
+        await copyText(buildShareUrl(room, "sender"), "sender link");
     }, [copyText, room]);
 
     const copyReceiverLink = useCallback(async () => {
-        await copyText(buildShareUrl(room, "receiver"), "desktop receiver link");
+        await copyText(buildShareUrl(room, "receiver"), "receiver link");
     }, [copyText, room]);
 
     const createFreshRoom = useCallback(async () => {
@@ -1293,7 +1296,7 @@ export default function Stream() {
                                         fontSize: { xs: "2.5rem", sm: "4rem", md: "5.35rem" },
                                     }}
                                 >
-                                    Browser-only WebRTC camera, microphone, and screen receiver.
+                                    Browser-only WebRTC streaming between any two devices.
                                 </Typography>
 
                                 <Typography
@@ -1304,15 +1307,15 @@ export default function Stream() {
                                         lineHeight: 1.75,
                                     }}
                                 >
-                                    Desktop opens as the receiver and waits. iPhone opens as the sender and starts
-                                    camera plus microphone with iOS-safe fallbacks. Supported desktop browsers can
-                                    also share a browser screen/window through getDisplayMedia.
+                                    One browser opens as the receiver and waits. The other opens as the sender and
+                                    starts camera plus microphone, or browser screen capture when supported. It works
+                                    for two desktops, phone to desktop, desktop to phone, and phone to phone.
                                 </Typography>
 
                                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                                     <Chip
                                         icon={<PhoneIphoneRounded />}
-                                        label={isIOS ? "iOS detected" : "Desktop/browser detected"}
+                                        label={isIOS ? "iOS browser detected" : "Browser device detected"}
                                         sx={{
                                             color: "#9ee8ff",
                                             fontWeight: 900,
@@ -1383,14 +1386,14 @@ export default function Stream() {
                                     <Stack direction="row" spacing={1} alignItems="center">
                                         <WarningAmberRounded sx={{ color: "#ffcf7a" }} />
                                         <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                                            iPhone app capture note
+                                            Browser-only device pairing
                                         </Typography>
                                     </Stack>
 
                                     <Typography sx={{ color: "rgba(255,255,255,0.68)", lineHeight: 1.7 }}>
-                                        This page only uses browser features: camera, microphone, browser screen
-                                        capture when exposed, WebRTC, and HTTPS fetch calls to your Cloudflare signal
-                                        API. It does not use local-network discovery or receiver protocols outside the browser.
+                                        {DEVICE_PAIRING_NOTE} This page only uses browser features: camera, microphone,
+                                        browser screen capture when exposed, WebRTC, and HTTPS fetch calls to your
+                                        Cloudflare signal API.
                                     </Typography>
                                 </Stack>
                             </GlassCard>
@@ -1407,7 +1410,7 @@ export default function Stream() {
                                 border: "1px solid rgba(255,199,107,0.24)",
                             }}
                         >
-                            iPhone Safari usually blocks camera and microphone on non-HTTPS pages.
+                            Browsers usually block camera and microphone on non-HTTPS pages.
                             Test from your Cloudflare Pages HTTPS URL.
                         </Alert>
                     )}
@@ -1420,24 +1423,24 @@ export default function Stream() {
                                         compact
                                         eyebrow="Easy setup"
                                         title="Use these two links"
-                                        description="Start the desktop receiver first, then open the iPhone sender link."
+                                        description="Start one device as the receiver first, then open the sender link on the other device."
                                     />
 
                                     <Stack spacing={1.5}>
                                         <EasyStep
                                             number={1}
-                                            title="Desktop"
-                                            description="Open the receiver link on your desktop. It auto-arms and waits."
+                                            title="Receiver device"
+                                            description="Open the receiver link on any desktop or phone. It auto-arms and waits."
                                         />
                                         <EasyStep
                                             number={2}
-                                            title="iPhone"
-                                            description="Open the sender link on your iPhone and tap Start iPhone Camera + Mic."
+                                            title="Sender device"
+                                            description="Open the sender link on any desktop or phone, then tap Start Camera + Mic."
                                         />
                                         <EasyStep
                                             number={3}
                                             title="Live"
-                                            description="The desktop receives the iPhone video and audio through WebRTC."
+                                            description="The receiver gets the sender video and audio through WebRTC."
                                         />
                                     </Stack>
 
@@ -1485,7 +1488,7 @@ export default function Stream() {
                                             startIcon={<ContentCopyRounded />}
                                             sx={softButtonSx}
                                         >
-                                            Copy iPhone Link
+                                            Copy Sender Link
                                         </Button>
 
                                         <Button
@@ -1493,7 +1496,7 @@ export default function Stream() {
                                             startIcon={<ContentCopyRounded />}
                                             sx={softButtonSx}
                                         >
-                                            Copy Desktop Link
+                                            Copy Receiver Link
                                         </Button>
                                     </Stack>
 
@@ -1503,12 +1506,12 @@ export default function Stream() {
                                         <Stack direction="row" spacing={1} alignItems="center">
                                             <LinkRounded sx={{ color: "#9ee8ff" }} />
                                             <Typography sx={{ fontWeight: 950 }}>
-                                                iPhone sender URL
+                                                Sender URL
                                             </Typography>
                                         </Stack>
 
                                         <Typography
-                                            onClick={() => copyText(senderLink, "iPhone sender link")}
+                                            onClick={() => copyText(senderLink, "sender link")}
                                             sx={{
                                                 color: "rgba(255,255,255,0.62)",
                                                 fontSize: 13,
@@ -1524,12 +1527,12 @@ export default function Stream() {
                                         <Stack direction="row" spacing={1} alignItems="center">
                                             <DesktopWindowsRounded sx={{ color: "#b38cff" }} />
                                             <Typography sx={{ fontWeight: 950 }}>
-                                                Desktop receiver URL
+                                                Receiver URL
                                             </Typography>
                                         </Stack>
 
                                         <Typography
-                                            onClick={() => copyText(receiverLink, "desktop receiver link")}
+                                            onClick={() => copyText(receiverLink, "receiver link")}
                                             sx={{
                                                 color: "rgba(255,255,255,0.62)",
                                                 fontSize: 13,
@@ -1550,11 +1553,11 @@ export default function Stream() {
                                     <SectionHeader
                                         compact
                                         eyebrow="Controls"
-                                        title={role === "sender" ? "iPhone sender controls" : "Desktop receiver controls"}
+                                        title={role === "sender" ? "Sender controls" : "Receiver controls"}
                                         description={
                                             role === "sender"
-                                                ? "One tap starts the iPhone camera, microphone, signaling, and WebRTC offer."
-                                                : "Receiver mode waits for the iPhone sender and auto-answers the WebRTC offer."
+                                                ? "Start camera/microphone or browser screen capture, then send a WebRTC offer."
+                                                : "Receiver mode waits for the sender device and auto-answers the WebRTC offer."
                                         }
                                     />
 
@@ -1563,26 +1566,26 @@ export default function Stream() {
                                             onClick={() => {
                                                 setRole("receiver");
                                                 roleRef.current = "receiver";
-                                                addLog("Switched to desktop receiver mode.");
+                                                addLog("Switched to receiver mode.");
                                             }}
                                             startIcon={<DesktopWindowsRounded />}
                                             variant={role === "receiver" ? "contained" : "text"}
                                             sx={role === "receiver" ? primaryPillSx : softButtonSx}
                                         >
-                                            Desktop Receiver
+                                            Receiver
                                         </Button>
 
                                         <Button
                                             onClick={() => {
                                                 setRole("sender");
                                                 roleRef.current = "sender";
-                                                addLog("Switched to iPhone sender mode.");
+                                                addLog("Switched to sender mode.");
                                             }}
                                             startIcon={<PhoneIphoneRounded />}
                                             variant={role === "sender" ? "contained" : "text"}
                                             sx={role === "sender" ? primaryPillSx : softButtonSx}
                                         >
-                                            iPhone Sender
+                                            Sender
                                         </Button>
                                     </Stack>
 
@@ -1601,7 +1604,7 @@ export default function Stream() {
                                                     fontSize: 17,
                                                 }}
                                             >
-                                                Start iPhone Camera + Mic
+                                                Start Camera + Mic
                                             </Button>
 
                                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1618,7 +1621,7 @@ export default function Stream() {
                                                     title={
                                                         supportsDisplay && !isIOS
                                                             ? "Starts browser screen capture with audio when this browser exposes getDisplayMedia."
-                                                            : "Screen capture is not available from this browser. On iPhone Safari, use Camera + Mic."
+                                                            : "Screen capture is not available from this browser. Use Camera + Mic instead."
                                                     }
                                                 >
                                                     <span>
@@ -1643,9 +1646,9 @@ export default function Stream() {
                                             </Stack>
 
                                             <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.7 }}>
-                                                On iPhone, Safari will ask for camera and microphone permission. Keep this
-                                                page open while streaming. If permission fails, check Safari site settings
-                                                for Camera and Microphone, then tap Reconnect Stream.
+                                                The sender browser will ask for camera and microphone permission. Keep this
+                                                page open while streaming. If permission fails, check the browser site
+                                                settings for Camera and Microphone, then tap Reconnect Stream.
                                             </Typography>
                                         </Stack>
                                     ) : (
@@ -1660,7 +1663,7 @@ export default function Stream() {
                                                     fontSize: 17,
                                                 }}
                                             >
-                                                Start Desktop Receiver
+                                                Start Receiver
                                             </Button>
 
                                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -1685,13 +1688,13 @@ export default function Stream() {
                                                     startIcon={<ContentCopyRounded />}
                                                     sx={softButtonSx}
                                                 >
-                                                    Copy iPhone Link
+                                                    Copy Sender Link
                                                 </Button>
                                             </Stack>
 
                                             <Typography sx={{ color: "rgba(255,255,255,0.62)", lineHeight: 1.7 }}>
-                                                The receiver can be started first. Once the iPhone starts the camera,
-                                                the desktop will answer and display the stream.
+                                                The receiver can be started first. Once the sender starts camera/mic or
+                                                browser screen capture, this device will answer and display the stream.
                                             </Typography>
                                         </Stack>
                                     )}
@@ -1791,7 +1794,7 @@ export default function Stream() {
                     <Grid container spacing={3}>
                         <Grid item xs={12} md={6}>
                             <VideoPanel
-                                title="iPhone sender preview"
+                                title="Sender preview"
                                 icon={<PhoneIphoneRounded sx={{ color: "#9ee8ff" }} />}
                                 videoRef={localVideoRef}
                                 muted
@@ -1801,11 +1804,11 @@ export default function Stream() {
 
                         <Grid item xs={12} md={6}>
                             <VideoPanel
-                                title="Desktop receiver live view"
+                                title="Receiver live view"
                                 icon={<DesktopWindowsRounded sx={{ color: "#b38cff" }} />}
                                 videoRef={remoteVideoRef}
                                 muted={false}
-                                placeholder={remoteActive ? "" : "Received iPhone stream appears here"}
+                                placeholder={remoteActive ? "" : "Received stream appears here"}
                             />
                         </Grid>
                     </Grid>
@@ -1838,13 +1841,13 @@ export default function Stream() {
                                     <Stack spacing={1.5}>
                                         <EasyStep
                                             number={1}
-                                            title="Open desktop receiver"
-                                            description="Use the desktop link. Receiver mode auto-starts when the URL has auto=1."
+                                            title="Open receiver device"
+                                            description="Use the receiver link on any desktop or phone. Receiver mode auto-starts when the URL has auto=1."
                                         />
                                         <EasyStep
                                             number={2}
-                                            title="Open iPhone sender"
-                                            description="Use the iPhone link. Tap Start iPhone Camera + Mic."
+                                            title="Open sender device"
+                                            description="Use the sender link on any desktop or phone. Tap Start Camera + Mic, or Browser Screen Capture when supported."
                                         />
                                         <EasyStep
                                             number={3}
@@ -1865,18 +1868,18 @@ export default function Stream() {
                                     <Stack spacing={1.5}>
                                         <EasyStep
                                             number={1}
-                                            title="iPhone camera + microphone"
-                                            description="Works in Safari over HTTPS after the user taps the sender button and grants Camera/Microphone permission."
+                                            title="Camera + microphone"
+                                            description="Works in browser over HTTPS after the user taps the sender button and grants Camera/Microphone permission."
                                         />
                                         <EasyStep
                                             number={2}
-                                            title="Desktop browser screen capture"
+                                            title="Browser screen capture"
                                             description="Works only when the sender browser exposes getDisplayMedia. The page disables this control when the API is blocked."
                                         />
                                         <EasyStep
                                             number={3}
                                             title="WebRTC receiver"
-                                            description="The desktop page receives remote browser media tracks over WebRTC after Cloudflare handles signaling."
+                                            description="The receiver page gets remote browser media tracks over WebRTC after Cloudflare handles signaling."
                                         />
                                     </Stack>
                                 </Stack>
