@@ -54,6 +54,7 @@ import {
     TuneRounded,
     VolumeUpRounded,
     SensorsRounded,
+    LocalLibraryTwoTone
 } from "@mui/icons-material";
 
 export const primaryPillSx = {
@@ -643,6 +644,12 @@ export function AppNavBar() {
             label: "Home",
             path: "/",
             icon: <HomeRounded fontSize="small" />,
+        },
+        {
+            label: "Archive",
+            path: "/archive",
+            icon: <LocalLibraryTwoTone fontsize="small" />,
+
         },
         {
             label: "Video Editor",
