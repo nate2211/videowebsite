@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -29,19 +29,21 @@ import {
   MovieCreationRounded,
   OpenInNewRounded,
   PlayArrowRounded,
+  PlaylistAddRounded,
+  QueuePlayNextRounded,
   RestartAltRounded,
   SearchRounded,
   TheatersRounded,
   VideoFileRounded,
 } from "@mui/icons-material";
+import {AppNavBar, GradientPage} from "../components/components";
 
 const ARCHIVE_SEARCH_BATCH_SIZE = 60;
+const PLAYER_ROUTE = "/player";
+const PLAYER_PLAYLIST_STORAGE_KEY = "audiomasterlab-video-playlist-v1";
+const ARCHIVE_PAGE_BUILD = "archive-direct-media-v3";
 const MAX_METADATA_LOOKUPS = 18;
 const MIN_PLAYABLE_BYTES = 128 * 1024;
-const ARCHIVE_PROXY_ENDPOINTS = [
-  "/api/archiveproxy",
-  "https://scrapewebsite.pages.dev/api/archiveproxy",
-];
 
 const PLAYABLE_VIDEO_EXTENSIONS = [".mp4", ".m4v", ".webm", ".ogv", ".ogg"];
 const PLAYABLE_VIDEO_FORMATS = [
@@ -63,6 +65,19 @@ const BLOCKED_VIDEO_FILE_TERMS = [
   "_meta.",
   "_itemimage",
 ];
+
+const BLOCKED_POSTER_FILE_TERMS = [
+  "__ia_thumb",
+  "_thumb",
+  "thumbs",
+  "thumbnail",
+  "spectrogram",
+  "waveform",
+  "metadata",
+  "_meta.",
+  "_itemimage",
+];
+const MIN_POSTER_BYTES = 8 * 1024;
 
 const VIDEO_COLLECTIONS = [
   {
@@ -119,13 +134,13 @@ const VIDEO_COLLECTIONS = [
 
 const DEFAULT_COLLECTIONS = ["opensource_movies", "prelinger", "movies"];
 const SEARCH_FIELDS =
-  "identifier,title,creator,collection,date,downloads,description,subject,item_size";
+    "identifier,title,creator,collection,date,downloads,description,subject,item_size";
 
 const pageSx = {
   minHeight: "100vh",
   color: "#f4f8ff",
   background:
-    "radial-gradient(circle at 18% 8%, rgba(158,232,255,0.18), transparent 32%), radial-gradient(circle at 86% 0%, rgba(179,140,255,0.16), transparent 30%), #050711",
+      "radial-gradient(circle at 18% 8%, rgba(158,232,255,0.18), transparent 32%), radial-gradient(circle at 86% 0%, rgba(179,140,255,0.16), transparent 30%), #050711",
 };
 
 const cardSx = {
@@ -185,9 +200,9 @@ function formatBytes(value) {
 
 function sanitizeSolrPhrase(value) {
   return String(value || "")
-    .replace(/[\\"]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+      .replace(/[\\"]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 }
 
 function quoteSolr(value) {
@@ -196,10 +211,10 @@ function quoteSolr(value) {
 
 function tokenizeQuery(value) {
   return sanitizeSolrPhrase(value)
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 1)
-    .slice(0, 8);
+      .split(/\s+/)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 1)
+      .slice(0, 8);
 }
 
 function buildArchiveSearchQuery(searchTerm, collectionIds) {
@@ -214,19 +229,19 @@ function buildArchiveSearchQuery(searchTerm, collectionIds) {
   const tokens = tokenizeQuery(trimmed);
   const exact = quoteSolr(trimmed);
   const tokenQuery = tokens.length
-    ? tokens
-        .map((token) => {
-          const safe = quoteSolr(token);
-          return `(title:${safe} OR creator:${safe} OR subject:${safe} OR description:${safe} OR identifier:${safe})`;
-        })
-        .join(" AND ")
-    : "";
+      ? tokens
+          .map((token) => {
+            const safe = quoteSolr(token);
+            return `(title:${safe} OR creator:${safe} OR subject:${safe} OR description:${safe} OR identifier:${safe})`;
+          })
+          .join(" AND ")
+      : "";
 
   return [
     "mediatype:movies",
     `(${collectionQuery})`,
     `((title:${exact} OR creator:${exact} OR subject:${exact} OR description:${exact} OR identifier:${exact})${
-      tokenQuery ? ` OR (${tokenQuery})` : ""
+        tokenQuery ? ` OR (${tokenQuery})` : ""
     })`,
   ].join(" AND ");
 }
@@ -244,55 +259,33 @@ function buildArchiveAdvancedSearchUrl(searchTerm, collectionIds, page) {
   return `https://archive.org/advancedsearch.php?${params.toString()}`;
 }
 
-function buildArchiveProxyUrlCandidates(targetUrl) {
-  return ARCHIVE_PROXY_ENDPOINTS.map((endpoint) => {
-    const proxyUrl = new URL(endpoint, window.location.origin);
-    proxyUrl.searchParams.set("url", targetUrl);
-    return proxyUrl.toString();
-  });
-}
-
-function buildExternalArchiveProxyUrl(targetUrl) {
-  const endpoint =
-    ARCHIVE_PROXY_ENDPOINTS.find((value) => /^https?:\/\//i.test(value)) ||
-    ARCHIVE_PROXY_ENDPOINTS[0];
-  const proxyUrl = new URL(endpoint, window.location.origin);
-  proxyUrl.searchParams.set("url", targetUrl);
-  return proxyUrl.toString();
-}
-
 async function fetchArchiveJson(targetUrl, signal) {
-  const errors = [];
+  try {
+    const response = await fetch(targetUrl, {
+      method: "GET",
+      signal,
+      headers: { Accept: "application/json" },
+      credentials: "omit",
+      cache: "no-store",
+      mode: "cors",
+    });
 
-  for (const candidate of buildArchiveProxyUrlCandidates(targetUrl)) {
-    try {
-      const response = await fetch(candidate, {
-        method: "GET",
-        signal,
-        headers: { Accept: "application/json" },
-        credentials: "omit",
-      });
-
-      if (!response.ok) {
-        errors.push(`${response.status} ${response.statusText || "Archive proxy error"}`);
-        continue;
-      }
-
-      const contentType = response.headers.get("Content-Type") || "";
-      const text = await response.text();
-
-      try {
-        return JSON.parse(text);
-      } catch {
-        errors.push(`Proxy returned ${contentType || "non-JSON"} instead of Archive JSON.`);
-      }
-    } catch (error) {
-      if (error?.name === "AbortError") throw error;
-      errors.push(error?.message || "Archive proxy JSON request failed.");
+    if (!response.ok) {
+      throw new Error(
+          `Archive returned HTTP ${response.status} ${response.statusText || "metadata error"}.`
+      );
     }
-  }
 
-  throw new Error(errors.filter(Boolean).join(" | ") || "Archive proxy JSON request failed.");
+    const data = await response.json();
+    if (!data || typeof data !== "object") {
+      throw new Error("Archive returned an invalid JSON response.");
+    }
+
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    throw new Error(error?.message || "Direct Archive JSON request failed.");
+  }
 }
 
 function isAllowedIaHost(hostname) {
@@ -301,10 +294,10 @@ function isAllowedIaHost(hostname) {
 
 function encodeArchivePathPart(part) {
   return String(part || "")
-    .split("/")
-    .filter(Boolean)
-    .map((piece) => encodeURIComponent(piece))
-    .join("/");
+      .split("/")
+      .filter(Boolean)
+      .map((piece) => encodeURIComponent(piece))
+      .join("/");
 }
 
 function buildArchiveFileUrl(identifier, fileName, mode = "download") {
@@ -329,6 +322,77 @@ function getArchiveDetailsUrl(identifier) {
   return `https://archive.org/details/${encodeURIComponent(identifier)}`;
 }
 
+function makePlaylistItemId(url) {
+  let hash = 2166136261;
+  const text = String(url || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `video-${(hash >>> 0).toString(36)}`;
+}
+
+function readPlayerPlaylist() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLAYER_PLAYLIST_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.url) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePlayerPlaylist(items) {
+  try {
+    localStorage.setItem(PLAYER_PLAYLIST_STORAGE_KEY, JSON.stringify(items));
+
+    window.dispatchEvent(
+        new CustomEvent("audiomasterlab:video-playlist-updated", {
+          detail: items,
+        })
+    );
+  } catch {
+    // The /player route still receives the selected source through the URL query string.
+  }
+}
+
+function buildPlayerRoute(item, autoplay = true) {
+  if (!item?.url) {
+    return PLAYER_ROUTE;
+  }
+
+  const search = new URLSearchParams({
+    source: item.url,
+    title: item.label || item.fileName || "Archive video",
+    playlistItem: item.id || makePlaylistItemId(item.url),
+    autoplay: autoplay ? "1" : "0",
+  });
+
+  return `${PLAYER_ROUTE}?${search.toString()}`;
+}
+
+function createArchivePlaylistItem(item, file) {
+  const url = buildArchiveFileUrl(item.identifier, file.name, "download");
+  return {
+    id: makePlaylistItemId(url),
+    url,
+    label: item.title || file.name,
+    fileName: file.name,
+    posterUrl: item.posterUrl || "",
+    sourceType: "Archive.org",
+    detailsUrl: item.detailsUrl || getArchiveDetailsUrl(item.identifier),
+    archiveIdentifier: item.identifier,
+    size: Number(file.size || 0),
+  };
+}
+
+function appendUniquePlaylistItems(currentItems, newItems) {
+  const byUrl = new Map();
+  [...currentItems, ...newItems].forEach((item) => {
+    if (item?.url) byUrl.set(item.url, item);
+  });
+  return Array.from(byUrl.values());
+}
+
 function isPlayableVideoFile(file) {
   const name = String(file?.name || "");
   const lowerName = name.toLowerCase();
@@ -345,8 +409,8 @@ function isPlayableVideoFile(file) {
   }
 
   return (
-    PLAYABLE_VIDEO_EXTENSIONS.includes(extension) ||
-    PLAYABLE_VIDEO_FORMATS.some((term) => format.includes(term))
+      PLAYABLE_VIDEO_EXTENSIONS.includes(extension) ||
+      PLAYABLE_VIDEO_FORMATS.some((term) => format.includes(term))
   );
 }
 
@@ -369,8 +433,8 @@ function getPlayableVideoScore(file) {
 
 function getItemServerHosts(metadata) {
   return [metadata?.server, metadata?.d1, metadata?.d2]
-    .map((host) => String(host || "").toLowerCase())
-    .filter((host, index, all) => host && all.indexOf(host) === index && isAllowedIaHost(host));
+      .map((host) => String(host || "").toLowerCase())
+      .filter((host, index, all) => host && all.indexOf(host) === index && isAllowedIaHost(host));
 }
 
 function getVideoSourceTargets(identifier, file, metadata) {
@@ -379,38 +443,46 @@ function getVideoSourceTargets(identifier, file, metadata) {
     buildArchiveFileUrl(identifier, fileName, "download"),
     buildArchiveFileUrl(identifier, fileName, "serve"),
     ...getItemServerHosts(metadata).map((host) =>
-      buildIaFileUrl(host, identifier, fileName, metadata?.dir)
+        buildIaFileUrl(host, identifier, fileName, metadata?.dir)
     ),
   ].filter(Boolean);
 
   return urls.filter((url, index, all) => all.indexOf(url) === index);
 }
 
-function getProxiedVideoSourceCandidates(identifier, file, metadata) {
-  return getVideoSourceTargets(identifier, file, metadata).flatMap((targetUrl) =>
-    buildArchiveProxyUrlCandidates(targetUrl)
-  );
+function getDirectVideoSourceCandidates(identifier, file, metadata) {
+  return getVideoSourceTargets(identifier, file, metadata);
 }
 
-function getOpenableProxiedVideoSource(identifier, file, metadata) {
+function getOpenableVideoSource(identifier, file, metadata) {
   const [targetUrl] = getVideoSourceTargets(identifier, file, metadata);
-  return targetUrl ? buildExternalArchiveProxyUrl(targetUrl) : "";
+  return targetUrl || "";
+}
+
+function isUsablePosterFile(file) {
+  const name = String(file?.name || "").toLowerCase();
+  const size = Number(file?.size || 0);
+
+  if (!name || !/\.(jpg|jpeg|png|webp)$/i.test(name)) {
+    return false;
+  }
+
+  if (BLOCKED_POSTER_FILE_TERMS.some((term) => name.includes(term))) {
+    return false;
+  }
+
+  return size <= 0 || size >= MIN_POSTER_BYTES;
 }
 
 function getBestPosterFile(files = []) {
-  const image = files.find((file) => {
-    const name = String(file?.name || "").toLowerCase();
-    return name.includes("_itemimage") && /\.(jpg|jpeg|png|webp)$/i.test(name);
-  });
-
-  return image || files.find((file) => /\.(jpg|jpeg|png|webp)$/i.test(String(file?.name || "")));
+  return files
+      .filter(isUsablePosterFile)
+      .sort((left, right) => Number(right?.size || 0) - Number(left?.size || 0))[0] || null;
 }
 
-function getArchiveImageUrl(identifier, file, metadata) {
+function getArchiveImageUrl(identifier, file) {
   if (!file?.name) return "";
-  const targets = getVideoSourceTargets(identifier, file, metadata);
-  const preferred = targets.find((url) => url.includes("/download/")) || targets[0];
-  return preferred ? buildExternalArchiveProxyUrl(preferred) : "";
+  return buildArchiveFileUrl(identifier, file.name, "download");
 }
 
 function mapSearchDoc(doc) {
@@ -442,7 +514,7 @@ function mapMetadataToPlayableItem(searchItem, metadata) {
     date: getString(metadata?.metadata?.date) || searchItem.date,
     description: getString(metadata?.metadata?.description) || searchItem.description,
     playableFiles,
-    posterUrl: getArchiveImageUrl(searchItem.identifier, posterFile, metadata),
+    posterUrl: getArchiveImageUrl(searchItem.identifier, posterFile),
     metadata,
   };
 }
@@ -450,283 +522,323 @@ function mapMetadataToPlayableItem(searchItem, metadata) {
 function CollectionPicker({ selected, onChange }) {
   const toggleCollection = (collectionId) => {
     const next = selected.includes(collectionId)
-      ? selected.filter((id) => id !== collectionId)
-      : [...selected, collectionId];
+        ? selected.filter((id) => id !== collectionId)
+        : [...selected, collectionId];
     onChange(next.length ? next : DEFAULT_COLLECTIONS);
   };
 
   return (
-    <Grid container spacing={1.25}>
-      {VIDEO_COLLECTIONS.map((collection) => (
-        <Grid item xs={12} sm={6} md={4} key={collection.id}>
-          <Paper sx={{ ...softCardSx, p: 1.25 }}>
-            <FormControlLabel
-              sx={{ alignItems: "flex-start", m: 0, gap: 1 }}
-              control={
-                <Checkbox
-                  checked={selected.includes(collection.id)}
-                  onChange={() => toggleCollection(collection.id)}
-                  sx={{ color: "rgba(255,255,255,0.55)", pt: 0.25 }}
+      <Grid container spacing={1.25}>
+        {VIDEO_COLLECTIONS.map((collection) => (
+            <Grid item xs={12} sm={6} md={4} key={collection.id}>
+              <Paper sx={{ ...softCardSx, p: 1.25 }}>
+                <FormControlLabel
+                    sx={{ alignItems: "flex-start", m: 0, gap: 1 }}
+                    control={
+                      <Checkbox
+                          checked={selected.includes(collection.id)}
+                          onChange={() => toggleCollection(collection.id)}
+                          sx={{ color: "rgba(255,255,255,0.55)", pt: 0.25 }}
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography sx={{ fontWeight: 900, fontSize: 14 }}>
+                          {collection.label}
+                        </Typography>
+                        <Typography sx={{ color: "rgba(244,248,255,0.64)", fontSize: 12.5 }}>
+                          {collection.description}
+                        </Typography>
+                      </Box>
+                    }
                 />
-              }
-              label={
-                <Box>
-                  <Typography sx={{ fontWeight: 900, fontSize: 14 }}>
-                    {collection.label}
-                  </Typography>
-                  <Typography sx={{ color: "rgba(244,248,255,0.64)", fontSize: 12.5 }}>
-                    {collection.description}
-                  </Typography>
-                </Box>
-              }
-            />
-          </Paper>
-        </Grid>
-      ))}
-    </Grid>
+              </Paper>
+            </Grid>
+        ))}
+      </Grid>
   );
 }
 
 function VideoPlayerFrame({ item, file }) {
   const candidates = useMemo(
-    () => getProxiedVideoSourceCandidates(item.identifier, file, item.metadata),
-    [file, item.identifier, item.metadata]
+      () => getDirectVideoSourceCandidates(item.identifier, file, item.metadata),
+      [file, item.identifier, item.metadata]
   );
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [error, setError] = useState("");
+  const [posterFailed, setPosterFailed] = useState(false);
 
   useEffect(() => {
     setCandidateIndex(0);
     setError("");
+    setPosterFailed(false);
   }, [file?.name, item.identifier]);
 
   const activeSource = candidates[candidateIndex] || "";
   const canTryNext = candidateIndex < candidates.length - 1;
 
   const handleVideoError = () => {
+    if (!posterFailed && item.posterUrl) {
+      setPosterFailed(true);
+    }
+
     if (canTryNext) {
       setCandidateIndex((index) => index + 1);
       setError("");
       return;
     }
 
-    setError("This Archive file did not stream from download, serve, or IA host fallbacks.");
+    setError("This Archive file did not stream from its direct download, serve, or IA host range fallbacks.");
   };
 
   return (
-    <Box>
-      <Box
-        sx={{
-          position: "relative",
-          overflow: "hidden",
-          borderRadius: 2,
-          background: "#02040b",
-          border: "1px solid rgba(255,255,255,0.1)",
-          aspectRatio: "16 / 9",
-        }}
-      >
-        {activeSource ? (
-          <Box
-            component="video"
-            key={activeSource}
-            controls
-            preload="metadata"
-            poster={item.posterUrl || undefined}
-            controlsList="nodownload"
-            onError={handleVideoError}
+      <Box>
+        <Box
             sx={{
-              display: "block",
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 2,
               background: "#02040b",
+              border: "1px solid rgba(255,255,255,0.1)",
+              aspectRatio: "16 / 9",
             }}
-          >
-            <source src={activeSource} />
-          </Box>
-        ) : (
-          <Stack alignItems="center" justifyContent="center" sx={{ height: "100%" }}>
-            <VideoFileRounded sx={{ color: "rgba(255,255,255,0.45)", fontSize: 52 }} />
-          </Stack>
-        )}
-      </Box>
+        >
+          {activeSource ? (
+              <Box
+                  component="video"
+                  key={activeSource}
+                  controls
+                  preload="metadata"
+                  poster={!posterFailed && item.posterUrl ? item.posterUrl : undefined}
+                  controlsList="nodownload"
+                  onError={handleVideoError}
+                  sx={{
+                    display: "block",
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    background: "#02040b",
+                  }}
+              >
+                <source src={activeSource} />
+              </Box>
+          ) : (
+              <Stack alignItems="center" justifyContent="center" sx={{ height: "100%" }}>
+                <VideoFileRounded sx={{ color: "rgba(255,255,255,0.45)", fontSize: 52 }} />
+              </Stack>
+          )}
+        </Box>
 
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 1.25 }}>
-        <Chip
-          size="small"
-          label={`${candidateIndex + 1}/${Math.max(candidates.length, 1)} proxy stream`}
-          sx={{ bgcolor: "rgba(158,232,255,0.11)", color: "#dff8ff", fontWeight: 800 }}
-        />
-        <Chip
-          size="small"
-          label={file.format || getFileNameExtension(file.name).replace(".", "").toUpperCase()}
-          sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "rgba(244,248,255,0.75)" }}
-        />
-        {file.size ? (
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 1.25 }}>
           <Chip
-            size="small"
-            label={formatBytes(file.size)}
-            sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "rgba(244,248,255,0.75)" }}
+              size="small"
+              label={`${candidateIndex + 1}/${Math.max(candidates.length, 1)} direct range stream`}
+              sx={{ bgcolor: "rgba(158,232,255,0.11)", color: "#dff8ff", fontWeight: 800 }}
           />
-        ) : null}
-      </Stack>
+          <Chip
+              size="small"
+              label={file.format || getFileNameExtension(file.name).replace(".", "").toUpperCase()}
+              sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "rgba(244,248,255,0.75)" }}
+          />
+          {file.size ? (
+              <Chip
+                  size="small"
+                  label={formatBytes(file.size)}
+                  sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "rgba(244,248,255,0.75)" }}
+              />
+          ) : null}
+        </Stack>
 
-      {error ? (
-        <Alert severity="warning" sx={{ mt: 1.25, borderRadius: 2 }}>
-          {error}
-        </Alert>
-      ) : null}
-    </Box>
+        {error ? (
+            <Alert severity="warning" sx={{ mt: 1.25, borderRadius: 2 }}>
+              {error}
+            </Alert>
+        ) : null}
+      </Box>
   );
 }
 
 function VideoResultCard({ item }) {
+  const navigate = useNavigate();
+  const [playlistAdded, setPlaylistAdded] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState(item.playableFiles[0]?.name || "");
   const selectedFile =
-    item.playableFiles.find((file) => file.name === selectedFileName) || item.playableFiles[0];
+      item.playableFiles.find((file) => file.name === selectedFileName) || item.playableFiles[0];
 
   useEffect(() => {
     setSelectedFileName(item.playableFiles[0]?.name || "");
   }, [item.identifier, item.playableFiles]);
 
-  const proxiedSource = useMemo(() => {
+  const directSource = useMemo(() => {
     if (!selectedFile) return "";
-    return getOpenableProxiedVideoSource(item.identifier, selectedFile, item.metadata);
+    return getOpenableVideoSource(item.identifier, selectedFile, item.metadata);
   }, [item.identifier, item.metadata, selectedFile]);
 
   const copySource = async () => {
-    if (!proxiedSource || !navigator?.clipboard) return;
-    await navigator.clipboard.writeText(proxiedSource);
+    if (!directSource || !navigator?.clipboard) return;
+    await navigator.clipboard.writeText(directSource);
+  };
+
+  const addToPlayerPlaylist = (openPlayer) => {
+    if (!selectedFile) return;
+    const playlistItem = createArchivePlaylistItem(item, selectedFile);
+    const nextPlaylist = appendUniquePlaylistItems(readPlayerPlaylist(), [playlistItem]);
+    writePlayerPlaylist(nextPlaylist);
+    setPlaylistAdded(true);
+
+    if (openPlayer) {
+      navigate(buildPlayerRoute(playlistItem, true));
+    }
   };
 
   return (
-    <Card sx={cardSx}>
-      <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
-        <Grid container spacing={2.5}>
-          <Grid item xs={12} md={6}>
-            <VideoPlayerFrame item={item} file={selectedFile} />
-          </Grid>
+      <Card sx={cardSx}>
+        <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+          <Grid container spacing={2.5}>
+            <Grid item xs={12} md={6}>
+              <VideoPlayerFrame item={item} file={selectedFile} />
+            </Grid>
 
-          <Grid item xs={12} md={6}>
-            <Stack spacing={1.5}>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Chip
-                  icon={<TheatersRounded />}
-                  label="Playable video"
-                  sx={{
-                    bgcolor: "rgba(158,232,255,0.12)",
-                    color: "#dff8ff",
-                    fontWeight: 900,
-                    "& .MuiChip-icon": { color: "#9ee8ff" },
-                  }}
-                />
-                {item.date ? (
-                  <Chip label={item.date} sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                ) : null}
-                <Chip
-                  label={`${formatCount(item.downloads)} downloads`}
-                  sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }}
-                />
-              </Stack>
+            <Grid item xs={12} md={6}>
+              <Stack spacing={1.5}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Chip
+                      icon={<TheatersRounded />}
+                      label="Playable video"
+                      sx={{
+                        bgcolor: "rgba(158,232,255,0.12)",
+                        color: "#dff8ff",
+                        fontWeight: 900,
+                        "& .MuiChip-icon": { color: "#9ee8ff" },
+                      }}
+                  />
+                  {item.date ? (
+                      <Chip label={item.date} sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
+                  ) : null}
+                  <Chip
+                      label={`${formatCount(item.downloads)} downloads`}
+                      sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }}
+                  />
+                </Stack>
 
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.12 }}>
-                  {item.title}
-                </Typography>
-                {item.creator ? (
-                  <Typography sx={{ mt: 0.5, color: "rgba(244,248,255,0.7)", fontWeight: 700 }}>
-                    {item.creator}
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.12 }}>
+                    {item.title}
                   </Typography>
+                  {item.creator ? (
+                      <Typography sx={{ mt: 0.5, color: "rgba(244,248,255,0.7)", fontWeight: 700 }}>
+                        {item.creator}
+                      </Typography>
+                  ) : null}
+                </Box>
+
+                {item.description ? (
+                    <Typography
+                        sx={{
+                          color: "rgba(244,248,255,0.72)",
+                          fontSize: 14,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 4,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                    >
+                      {item.description.replace(/<[^>]*>/g, " ")}
+                    </Typography>
                 ) : null}
-              </Box>
 
-              {item.description ? (
-                <Typography
-                  sx={{
-                    color: "rgba(244,248,255,0.72)",
-                    fontSize: 14,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 4,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}
+                <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Playable source"
+                    value={selectedFile?.name || ""}
+                    onChange={(event) => setSelectedFileName(event.target.value)}
+                    SelectProps={{ native: true }}
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        color: "#f4f8ff",
+                        borderRadius: 2,
+                        background: "rgba(255,255,255,0.04)",
+                      },
+                      "& .MuiInputLabel-root": { color: "rgba(244,248,255,0.68)" },
+                    }}
                 >
-                  {item.description.replace(/<[^>]*>/g, " ")}
-                </Typography>
-              ) : null}
+                  {item.playableFiles.map((file) => (
+                      <option key={file.name} value={file.name}>
+                        {file.name} {file.size ? `- ${formatBytes(file.size)}` : ""}
+                      </option>
+                  ))}
+                </TextField>
 
-              <TextField
-                select
-                fullWidth
-                size="small"
-                label="Playable source"
-                value={selectedFile?.name || ""}
-                onChange={(event) => setSelectedFileName(event.target.value)}
-                SelectProps={{ native: true }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    color: "#f4f8ff",
-                    borderRadius: 2,
-                    background: "rgba(255,255,255,0.04)",
-                  },
-                  "& .MuiInputLabel-root": { color: "rgba(244,248,255,0.68)" },
-                }}
-              >
-                {item.playableFiles.map((file) => (
-                  <option key={file.name} value={file.name}>
-                    {file.name} {file.size ? `- ${formatBytes(file.size)}` : ""}
-                  </option>
-                ))}
-              </TextField>
-
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Button
-                  component="a"
-                  href={item.detailsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<OpenInNewRounded />}
-                  variant="outlined"
-                  sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
-                >
-                  Open Archive.org
-                </Button>
-                <Button
-                  component="a"
-                  href={proxiedSource}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<PlayArrowRounded />}
-                  variant="outlined"
-                  sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
-                >
-                  Open proxied stream
-                </Button>
-                <Tooltip title="Copy proxied stream URL">
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button
+                      onClick={() => addToPlayerPlaylist(true)}
+                      startIcon={<QueuePlayNextRounded />}
+                      sx={primaryButtonSx}
+                  >
+                    Play in /player
+                  </Button>
+                  <Button
+                      onClick={() => addToPlayerPlaylist(false)}
+                      startIcon={<PlaylistAddRounded />}
+                      variant="outlined"
+                      sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                  >
+                    {playlistAdded ? "Added to /player playlist" : "Add to /player playlist"}
+                  </Button>
+                  <Button
+                      component="a"
+                      href={item.detailsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      startIcon={<OpenInNewRounded />}
+                      variant="outlined"
+                      sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                  >
+                    Open Archive.org
+                  </Button>
+                  <Button
+                      component="a"
+                      href={directSource}
+                      target="_blank"
+                      rel="noreferrer"
+                      startIcon={<PlayArrowRounded />}
+                      variant="outlined"
+                      sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                  >
+                    Open direct stream
+                  </Button>
+                  <Tooltip title="Copy direct stream URL">
                   <span>
                     <IconButton
-                      onClick={copySource}
-                      disabled={!proxiedSource}
-                      sx={{
-                        color: "#f4f8ff",
-                        border: "1px solid rgba(255,255,255,0.14)",
-                        bgcolor: "rgba(255,255,255,0.05)",
-                      }}
+                        onClick={copySource}
+                        disabled={!directSource}
+                        sx={{
+                          color: "#f4f8ff",
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          bgcolor: "rgba(255,255,255,0.05)",
+                        }}
                     >
                       <ContentCopyRounded />
                     </IconButton>
                   </span>
-                </Tooltip>
+                  </Tooltip>
+                </Stack>
               </Stack>
-            </Stack>
+            </Grid>
           </Grid>
-        </Grid>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
   );
 }
 
 export default function Archive() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    console.info(`[Archive] ${ARCHIVE_PAGE_BUILD}: direct Archive JSON and native media playback.`);
+  }, []);
   const [query, setQuery] = useState("");
   const [selectedCollections, setSelectedCollections] = useState(DEFAULT_COLLECTIONS);
   const [results, setResults] = useState([]);
@@ -735,14 +847,15 @@ export default function Archive() {
   const [searched, setSearched] = useState(false);
   const [showCollections, setShowCollections] = useState(false);
   const [progress, setProgress] = useState({ checked: 0, total: 0 });
+  const [playlistNotice, setPlaylistNotice] = useState("");
   const abortRef = useRef(null);
 
   const selectedCollectionLabels = useMemo(
-    () =>
-      VIDEO_COLLECTIONS.filter((collection) => selectedCollections.includes(collection.id))
-        .map((collection) => collection.label)
-        .join(", "),
-    [selectedCollections]
+      () =>
+          VIDEO_COLLECTIONS.filter((collection) => selectedCollections.includes(collection.id))
+              .map((collection) => collection.label)
+              .join(", "),
+      [selectedCollections]
   );
 
   const runSearch = useCallback(async () => {
@@ -811,198 +924,268 @@ export default function Archive() {
   };
 
   const loadingProgress =
-    progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
+      progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
+
+  const addAllResultsToPlayer = (openPlayer) => {
+    const playlistItems = results
+        .map((item) => {
+          const file = item.playableFiles?.[0];
+          return file ? createArchivePlaylistItem(item, file) : null;
+        })
+        .filter(Boolean);
+
+    if (!playlistItems.length) return;
+
+    const nextPlaylist = appendUniquePlaylistItems(
+        readPlayerPlaylist(),
+        playlistItems
+    );
+    writePlayerPlaylist(nextPlaylist);
+    setPlaylistNotice(`${playlistItems.length} Archive videos added to the /player playlist.`);
+
+    if (openPlayer) {
+      navigate(buildPlayerRoute(playlistItems[0], true));
+    }
+  };
 
   return (
-    <Box sx={pageSx}>
-      <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
-        <Stack spacing={2.5}>
-          <Paper
-            sx={{
-              ...cardSx,
-              p: { xs: 1, sm: 1.25 },
-              position: "sticky",
-              top: 12,
-              zIndex: 5,
-            }}
-          >
-            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Button
-                  component={RouterLink}
-                  to="/"
-                  startIcon={<HomeRounded />}
-                  sx={{ color: "#f4f8ff", borderRadius: 999, fontWeight: 900 }}
-                >
-                  Home
-                </Button>
-                <Chip
-                  icon={<MovieCreationRounded />}
-                  label="Archive video"
-                  sx={{
-                    bgcolor: "rgba(158,232,255,0.12)",
-                    color: "#dff8ff",
-                    fontWeight: 950,
-                    "& .MuiChip-icon": { color: "#9ee8ff" },
-                  }}
-                />
-              </Stack>
-              <Button onClick={resetSearch} startIcon={<RestartAltRounded />} sx={{ color: "#f4f8ff", borderRadius: 999 }}>
-                Reset
-              </Button>
-            </Stack>
-          </Paper>
-
-          <Card sx={cardSx}>
-            <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-              <Grid container spacing={2.5} alignItems="center">
-                <Grid item xs={12} md={6}>
-                  <Stack spacing={1.25}>
-                    <Typography
-                      variant="h3"
-                      sx={{
-                        fontWeight: 950,
-                        letterSpacing: 0,
-                        fontSize: { xs: 34, md: 48 },
-                        lineHeight: 1,
-                      }}
-                    >
-                      Search playable Archive videos
-                    </Typography>
-                    <Typography sx={{ color: "rgba(244,248,255,0.72)", maxWidth: 720 }}>
-                      Search Archive.org through the proxy, inspect item metadata, and only show files
-                      the browser can actually play: MP4, WebM, Ogg, and H.264 derivatives.
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      <Chip label="No direct media calls" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                      <Chip label="No download buttons" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                      <Chip label="Download, serve, IA fallback" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                    </Stack>
-                  </Stack>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper
-                    sx={{
-                      ...softCardSx,
-                      p: 2,
-                      background: alpha("#ffffff", 0.055),
-                    }}
+      <GradientPage sx={pageSx}>
+        <AppNavBar/>
+        <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
+          <Stack spacing={2.5}>
+            <Paper
+                sx={{
+                  ...cardSx,
+                  p: { xs: 1, sm: 1.25 },
+                  position: "sticky",
+                  top: 12,
+                  zIndex: 5,
+                }}
+            >
+              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Button
+                      component={RouterLink}
+                      to="/"
+                      startIcon={<HomeRounded />}
+                      sx={{ color: "#f4f8ff", borderRadius: 999, fontWeight: 900 }}
                   >
-                    <Stack spacing={1.5}>
-                      <TextField
-                        fullWidth
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") runSearch();
-                        }}
-                        placeholder="Search videos, creators, subjects, identifiers..."
-                        InputProps={{
-                          startAdornment: <SearchRounded sx={{ mr: 1, color: "rgba(244,248,255,0.55)" }} />,
-                        }}
-                        sx={{
-                          "& .MuiOutlinedInput-root": {
-                            color: "#f4f8ff",
-                            borderRadius: 2,
-                            background: "rgba(0,0,0,0.2)",
-                          },
-                        }}
-                      />
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        <Button
-                          onClick={runSearch}
-                          disabled={loading}
-                          startIcon={loading ? <CircularProgress size={18} /> : <SearchRounded />}
-                          sx={primaryButtonSx}
-                        >
-                          {loading ? "Finding playable videos" : "Search videos"}
-                        </Button>
-                        <Button
-                          onClick={() => setShowCollections((value) => !value)}
-                          variant="outlined"
-                          sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
-                        >
-                          Collections
-                        </Button>
-                      </Stack>
-                      <Typography sx={{ color: "rgba(244,248,255,0.6)", fontSize: 13 }}>
-                        Searching: {selectedCollectionLabels || "default video collections"}
-                      </Typography>
-                    </Stack>
-                  </Paper>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-
-          <Collapse in={showCollections}>
-            <Card sx={cardSx}>
-              <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                    Video collections
-                  </Typography>
-                  <CollectionPicker selected={selectedCollections} onChange={setSelectedCollections} />
+                    Home
+                  </Button>
+                  <Chip
+                      icon={<MovieCreationRounded />}
+                      label="Archive video"
+                      sx={{
+                        bgcolor: "rgba(158,232,255,0.12)",
+                        color: "#dff8ff",
+                        fontWeight: 950,
+                        "& .MuiChip-icon": { color: "#9ee8ff" },
+                      }}
+                  />
                 </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                      component={RouterLink}
+                      to={PLAYER_ROUTE}
+                      startIcon={<QueuePlayNextRounded />}
+                      sx={{ color: "#dff8ff", borderRadius: 999, fontWeight: 900 }}
+                  >
+                    Open /player Playlist
+                  </Button>
+                  <Button onClick={resetSearch} startIcon={<RestartAltRounded />} sx={{ color: "#f4f8ff", borderRadius: 999 }}>
+                    Reset
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Card sx={cardSx}>
+              <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                <Grid container spacing={2.5} alignItems="center">
+                  <Grid item xs={12} md={6}>
+                    <Stack spacing={1.25}>
+                      <Typography
+                          variant="h3"
+                          sx={{
+                            fontWeight: 950,
+                            letterSpacing: 0,
+                            fontSize: { xs: 34, md: 48 },
+                            lineHeight: 1,
+                          }}
+                      >
+                        Search playable Archive videos
+                      </Typography>
+                      <Typography sx={{ color: "rgba(244,248,255,0.72)", maxWidth: 720 }}>
+                        Search Archive.org directly, inspect item metadata, send selections to /player, and only show files
+                        the browser can actually play: MP4, WebM, Ogg, and H.264 derivatives.
+                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Chip label="Direct range media playback" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
+                        <Chip label="No download buttons" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
+                        <Chip label="Download, serve, IA range fallback" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
+                      </Stack>
+                    </Stack>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper
+                        sx={{
+                          ...softCardSx,
+                          p: 2,
+                          background: alpha("#ffffff", 0.055),
+                        }}
+                    >
+                      <Stack spacing={1.5}>
+                        <TextField
+                            fullWidth
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") runSearch();
+                            }}
+                            placeholder="Search videos, creators, subjects, identifiers..."
+                            InputProps={{
+                              startAdornment: <SearchRounded sx={{ mr: 1, color: "rgba(244,248,255,0.55)" }} />,
+                            }}
+                            sx={{
+                              "& .MuiOutlinedInput-root": {
+                                color: "#f4f8ff",
+                                borderRadius: 2,
+                                background: "rgba(0,0,0,0.2)",
+                              },
+                            }}
+                        />
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          <Button
+                              onClick={runSearch}
+                              disabled={loading}
+                              startIcon={loading ? <CircularProgress size={18} /> : <SearchRounded />}
+                              sx={primaryButtonSx}
+                          >
+                            {loading ? "Finding playable videos" : "Search videos"}
+                          </Button>
+                          <Button
+                              onClick={() => setShowCollections((value) => !value)}
+                              variant="outlined"
+                              sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                          >
+                            Collections
+                          </Button>
+                        </Stack>
+                        <Typography sx={{ color: "rgba(244,248,255,0.6)", fontSize: 13 }}>
+                          Searching: {selectedCollectionLabels || "default video collections"}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  </Grid>
+                </Grid>
               </CardContent>
             </Card>
-          </Collapse>
 
-          {loading ? (
-            <Paper sx={{ ...cardSx, p: 2 }}>
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <CircularProgress size={18} />
-                  <Typography sx={{ fontWeight: 850 }}>
-                    Checking Archive metadata for playable files
-                  </Typography>
-                </Stack>
-                <LinearProgress variant={progress.total ? "determinate" : "indeterminate"} value={loadingProgress} />
-                {progress.total ? (
-                  <Typography sx={{ color: "rgba(244,248,255,0.66)", fontSize: 13 }}>
-                    Checked {progress.checked} of {progress.total} candidate items.
-                  </Typography>
-                ) : null}
-              </Stack>
-            </Paper>
-          ) : null}
+            <Collapse in={showCollections}>
+              <Card sx={cardSx}>
+                <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+                  <Stack spacing={1.5}>
+                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                      Video collections
+                    </Typography>
+                    <CollectionPicker selected={selectedCollections} onChange={setSelectedCollections} />
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Collapse>
 
-          {error ? (
-            <Alert severity={results.length ? "info" : "warning"} sx={{ borderRadius: 2 }}>
-              {error}
-            </Alert>
-          ) : null}
+            {loading ? (
+                <Paper sx={{ ...cardSx, p: 2 }}>
+                  <Stack spacing={1}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CircularProgress size={18} />
+                      <Typography sx={{ fontWeight: 850 }}>
+                        Checking Archive metadata for playable files
+                      </Typography>
+                    </Stack>
+                    <LinearProgress variant={progress.total ? "determinate" : "indeterminate"} value={loadingProgress} />
+                    {progress.total ? (
+                        <Typography sx={{ color: "rgba(244,248,255,0.66)", fontSize: 13 }}>
+                          Checked {progress.checked} of {progress.total} candidate items.
+                        </Typography>
+                    ) : null}
+                  </Stack>
+                </Paper>
+            ) : null}
 
-          <Stack spacing={2}>
-            {results.map((item) => (
-              <VideoResultCard key={item.identifier} item={item} />
-            ))}
+            {error ? (
+                <Alert severity={results.length ? "info" : "warning"} sx={{ borderRadius: 2 }}>
+                  {error}
+                </Alert>
+            ) : null}
+
+            {playlistNotice ? (
+                <Alert severity="success" onClose={() => setPlaylistNotice("")} sx={{ borderRadius: 2 }}>
+                  {playlistNotice}
+                </Alert>
+            ) : null}
+
+            {results.length ? (
+                <Paper sx={{ ...cardSx, p: 1.5 }}>
+                  <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      alignItems={{ xs: "stretch", sm: "center" }}
+                      justifyContent="space-between"
+                  >
+                    <Typography sx={{ fontWeight: 900 }}>
+                      {results.length} playable Archive videos ready
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Button
+                          onClick={() => addAllResultsToPlayer(false)}
+                          startIcon={<PlaylistAddRounded />}
+                          variant="outlined"
+                          sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                      >
+                        Add all to playlist
+                      </Button>
+                      <Button
+                          onClick={() => addAllResultsToPlayer(true)}
+                          startIcon={<QueuePlayNextRounded />}
+                          sx={primaryButtonSx}
+                      >
+                        Play all in /player
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Paper>
+            ) : null}
+
+            <Stack spacing={2}>
+              {results.map((item) => (
+                  <VideoResultCard key={item.identifier} item={item} />
+              ))}
+            </Stack>
+
+            {!loading && searched && !results.length && !error ? (
+                <Paper sx={{ ...cardSx, p: 4, textAlign: "center" }}>
+                  <VideoFileRounded sx={{ fontSize: 54, color: "rgba(255,255,255,0.4)" }} />
+                  <Typography sx={{ mt: 1, fontWeight: 950 }}>No playable videos found.</Typography>
+                </Paper>
+            ) : null}
+
+            {!searched ? (
+                <Paper sx={{ ...cardSx, p: 3 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                      What this page filters out
+                    </Typography>
+                    <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
+                    <Typography sx={{ color: "rgba(244,248,255,0.68)" }}>
+                      Search results are not shown until Archive metadata includes at least one playable video derivative.
+                      Metadata is requested directly from Archive.org. Video files use native download, serve, and IA range-capable URLs without adding a CORS-enforcing media attribute.
+                    </Typography>
+                  </Stack>
+                </Paper>
+            ) : null}
           </Stack>
-
-          {!loading && searched && !results.length && !error ? (
-            <Paper sx={{ ...cardSx, p: 4, textAlign: "center" }}>
-              <VideoFileRounded sx={{ fontSize: 54, color: "rgba(255,255,255,0.4)" }} />
-              <Typography sx={{ mt: 1, fontWeight: 950 }}>No playable videos found.</Typography>
-            </Paper>
-          ) : null}
-
-          {!searched ? (
-            <Paper sx={{ ...cardSx, p: 3 }}>
-              <Stack spacing={1}>
-                <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                  What this page filters out
-                </Typography>
-                <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
-                <Typography sx={{ color: "rgba(244,248,255,0.68)" }}>
-                  Search results are not shown until their Archive metadata includes at least one
-                  playable video derivative. Metadata files, thumbnails, torrents, tiny previews,
-                  and non-video downloads are ignored before the result card is rendered.
-                </Typography>
-              </Stack>
-            </Paper>
-          ) : null}
-        </Stack>
-      </Container>
-    </Box>
+        </Container>
+      </GradientPage>
   );
 }

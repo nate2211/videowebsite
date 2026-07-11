@@ -54,7 +54,8 @@ import {
     TuneRounded,
     VolumeUpRounded,
     SensorsRounded,
-    LocalLibraryTwoTone
+    LocalLibraryTwoTone,
+    VideoFileRounded,
 } from "@mui/icons-material";
 
 export const primaryPillSx = {
@@ -602,7 +603,7 @@ function drawTextBox(ctx, box, canvasWidth, canvasHeight) {
     ctx.restore();
 }
 
-export function GradientPage({ children }) {
+export function GradientPage({ children, sx }) {
     return (
         <Box
             sx={{
@@ -610,6 +611,7 @@ export function GradientPage({ children }) {
                 color: "white",
                 background:
                     "radial-gradient(circle at top left, rgba(158,232,255,0.16), transparent 35%), radial-gradient(circle at 80% 10%, rgba(179,140,255,0.16), transparent 32%), linear-gradient(135deg, #050711 0%, #080b17 45%, #070814 100%)",
+                ...sx,
             }}
         >
             {children}
@@ -646,9 +648,15 @@ export function AppNavBar() {
             icon: <HomeRounded fontSize="small" />,
         },
         {
+            label: "Player",
+            path: "/player",
+            icon: <VideoFileRounded fontSize="small" />,
+
+        },
+        {
             label: "Archive",
             path: "/archive",
-            icon: <LocalLibraryTwoTone fontsize="small" />,
+            icon: <LocalLibraryTwoTone fontSize="small" />,
 
         },
         {

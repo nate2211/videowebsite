@@ -4,10 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="168e23c9-0f29-4185-a5ca-08ddf59b2134" name="Changes" comment="changes">
+    <list default="true" id="168e23c9-0f29-4185-a5ca-08ddf59b2134" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/App.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/App.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/components/components.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/components.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pages/Archive.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/Archive.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -36,8 +39,8 @@
 }</component>
   <component name="GithubPullRequestsUISettings">{
   &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/nate2211/videowebsite&quot;,
-    &quot;accountId&quot;: &quot;19396374-3958-4c63-a7ca-5be76ffcdcc3&quot;
+    &quot;url&quot;: &quot;https://github.com/nate2211/videowebsite.git&quot;,
+    &quot;accountId&quot;: &quot;52b34852-2821-44e0-aee3-6d7c02c1fbe7&quot;
   }
 }</component>
   <component name="McpProjectServerCommands">
@@ -46,61 +49,61 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.0000000001365361" />
-      <entry key="MS500" value="1.011396505778658" />
-      <entry key="S2" value="1.6635043059124248" />
-      <entry key="S5" value="2.8836606114554217" />
-      <entry key="S10" value="3.729752994496115" />
-      <entry key="S30" value="4.571075673473852" />
-      <entry key="S60" value="5.316637870859696" />
-      <entry key="M2" value="6.715389398894764" />
-      <entry key="M5" value="8.695443969974104" />
-      <entry key="M10" value="10.001036737077474" />
-      <entry key="M15" value="11.351031128868671" />
-      <entry key="M30" value="16.395049907410467" />
-      <entry key="H1" value="23.903262206363458" />
-      <entry key="H2" value="30.896832944299835" />
-      <entry key="H4" value="36.74645041696336" />
-      <entry key="D1" value="47.20673681852002" />
-      <entry key="W1" value="50.3993142481222" />
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.0" />
+      <entry key="S5" value="1.0" />
+      <entry key="S10" value="1.0" />
+      <entry key="S30" value="1.0" />
+      <entry key="S60" value="1.0" />
+      <entry key="M2" value="1.0" />
+      <entry key="M5" value="1.0000000012495485" />
+      <entry key="M10" value="1.0000355812814021" />
+      <entry key="M15" value="1.0011638130741956" />
+      <entry key="M30" value="1.0831313398210292" />
+      <entry key="H1" value="2.681071459278444" />
+      <entry key="H2" value="10.242875164728536" />
+      <entry key="H4" value="23.927294376342218" />
+      <entry key="D1" value="54.58352249973585" />
+      <entry key="W1" value="64.18610963879804" />
     </decayedCancelled>
     <decayedSelected>
-      <entry key="MS100" value="1.5089302475291502E-7" />
-      <entry key="MS500" value="0.04821036640983075" />
-      <entry key="S2" value="0.7216905013495228" />
-      <entry key="S5" value="1.3189558756369482" />
-      <entry key="S10" value="1.621808065347161" />
-      <entry key="S30" value="1.8746962901596154" />
-      <entry key="S60" value="2.032275638220143" />
-      <entry key="M2" value="2.283472130989476" />
-      <entry key="M5" value="2.6186070873270606" />
-      <entry key="M10" value="2.78835522878812" />
-      <entry key="M15" value="2.853766608872658" />
-      <entry key="M30" value="2.924182651754753" />
-      <entry key="H1" value="2.9613901721944784" />
-      <entry key="H2" value="2.9805164393644494" />
-      <entry key="H4" value="2.9902131311689937" />
-      <entry key="D1" value="2.9983625563412915" />
-      <entry key="W1" value="2.9997659247406956" />
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="1.180257241714858E-267" />
+      <entry key="S30" value="1.0567985886424341E-89" />
+      <entry key="S60" value="3.2508438729696545E-45" />
+      <entry key="M2" value="5.701617203013242E-23" />
+      <entry key="M5" value="1.2658995201555297E-9" />
+      <entry key="M10" value="3.558999943981186E-5" />
+      <entry key="M15" value="0.0010886807313480484" />
+      <entry key="M30" value="0.037442206768019105" />
+      <entry key="H1" value="0.2981974210397781" />
+      <entry key="H2" value="1.0178861993037513" />
+      <entry key="H4" value="1.9852625387884635" />
+      <entry key="D1" value="3.5518590133108914" />
+      <entry key="W1" value="3.932486202820919" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="8.999150566176883E-5" />
-      <entry key="MS500" value="0.1893910852378804" />
-      <entry key="S2" value="1.8354273698329602" />
-      <entry key="S5" value="3.8655221954960215" />
-      <entry key="S10" value="5.148568235596756" />
-      <entry key="S30" value="6.367706149864933" />
-      <entry key="S60" value="7.306845095416562" />
-      <entry key="M2" value="8.975511668473901" />
-      <entry key="M5" value="11.30347868311361" />
-      <entry key="M10" value="12.783788832872613" />
-      <entry key="M15" value="14.200974166066272" />
-      <entry key="M30" value="19.317261570700044" />
-      <entry key="H1" value="26.86364411522709" />
-      <entry key="H2" value="33.87683703842308" />
-      <entry key="H4" value="39.73640394916664" />
-      <entry key="D1" value="50.2050549170517" />
-      <entry key="W1" value="53.399073765544436" />
+      <entry key="MS100" value="0.20166043980553158" />
+      <entry key="MS500" value="0.7259791399519472" />
+      <entry key="S2" value="0.9230623462555853" />
+      <entry key="S5" value="0.9684839195403279" />
+      <entry key="S10" value="0.9841158059600139" />
+      <entry key="S30" value="0.9946769844336034" />
+      <entry key="S60" value="0.9973349409469235" />
+      <entry key="M2" value="0.998666581470975" />
+      <entry key="M5" value="0.9994664215749112" />
+      <entry key="M10" value="0.9998041124075628" />
+      <entry key="M15" value="1.002069822132651" />
+      <entry key="M30" value="1.12040304496096" />
+      <entry key="H1" value="2.9789273835804133" />
+      <entry key="H2" value="11.26027619841428" />
+      <entry key="H4" value="25.91211681532883" />
+      <entry key="D1" value="58.135256459099054" />
+      <entry key="W1" value="68.11857618424511" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -112,34 +115,27 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "main",
-    "javascript.preferred.runtime.type.id": "node",
-    "last_opened_file_path": "C:/Users/natem/WebstormProjects/videowebsite/src/pages",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_interpreter_path": "node",
-    "nodejs_package_manager_path": "npm",
-    "npm.npm start.executor": "Run",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;javascript.preferred.runtime.type.id&quot;: &quot;node&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_interpreter_path&quot;: &quot;node&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;npm.npm start.executor&quot;: &quot;Run&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="C:\Users\natem\WebstormProjects\videowebsite\src\pages" />
-      <recent name="C:\Users\natem\WebstormProjects\videowebsite" />
-    </key>
-  </component>
+}</component>
   <component name="RunManager" selected="npm.npm start">
     <configuration name="Debug Application" type="JavascriptDebugType" uri="http://localhost:3000">
       <method v="2" />
@@ -174,82 +170,10 @@
       <workItem from="1782651557290" duration="48000" />
       <workItem from="1783299747152" duration="189000" />
       <workItem from="1783300016651" duration="2020000" />
-      <workItem from="1783368537490" duration="158000" />
-      <workItem from="1783372842147" duration="18000" />
-      <workItem from="1783454274537" duration="875000" />
     </task>
-    <task id="LOCAL-00001" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783361871374</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1783361871374</updated>
-    </task>
-    <task id="LOCAL-00002" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783364179008</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1783364179008</updated>
-    </task>
-    <task id="LOCAL-00003" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783364991161</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1783364991161</updated>
-    </task>
-    <task id="LOCAL-00004" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783366019156</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1783366019156</updated>
-    </task>
-    <task id="LOCAL-00005" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783366364271</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1783366364271</updated>
-    </task>
-    <task id="LOCAL-00006" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783366879297</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1783366879297</updated>
-    </task>
-    <task id="LOCAL-00007" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783367852149</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1783367852149</updated>
-    </task>
-    <task id="LOCAL-00008" summary="changes">
-      <option name="closed" value="true" />
-      <created>1783368667250</created>
-      <option name="number" value="00008" />
-      <option name="presentableId" value="LOCAL-00008" />
-      <option name="project" value="LOCAL" />
-      <updated>1783368667250</updated>
-    </task>
-    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="VcsManagerConfiguration">
-    <MESSAGE value="changes" />
-    <option name="LAST_COMMIT_MESSAGE" value="changes" />
   </component>
 </project>
