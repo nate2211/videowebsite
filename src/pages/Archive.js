@@ -24,7 +24,10 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import {
+  AddRounded,
   ContentCopyRounded,
+  DeleteOutlineRounded,
+  FolderRounded,
   HomeRounded,
   MovieCreationRounded,
   OpenInNewRounded,
@@ -38,11 +41,11 @@ import {
 } from "@mui/icons-material";
 import {AppNavBar, GradientPage} from "../components/components";
 
-const ARCHIVE_SEARCH_BATCH_SIZE = 60;
+const ARCHIVE_SEARCH_BATCH_SIZE = 24;
 const PLAYER_ROUTE = "/player";
 const PLAYER_PLAYLIST_STORAGE_KEY = "audiomasterlab-video-playlist-v1";
-const ARCHIVE_PAGE_BUILD = "archive-direct-media-v3";
-const MAX_METADATA_LOOKUPS = 18;
+const CUSTOM_COLLECTIONS_STORAGE_KEY = "audiomasterlab-archive-custom-collections-v1";
+const ARCHIVE_PAGE_BUILD = "archive-direct-media-v4-pagination-custom-collections";
 const MIN_PLAYABLE_BYTES = 128 * 1024;
 
 const PLAYABLE_VIDEO_EXTENSIONS = [".mp4", ".m4v", ".webm", ".ogv", ".ogg"];
@@ -135,6 +138,111 @@ const VIDEO_COLLECTIONS = [
 const DEFAULT_COLLECTIONS = ["opensource_movies", "prelinger", "movies"];
 const SEARCH_FIELDS =
     "identifier,title,creator,collection,date,downloads,description,subject,item_size";
+
+function normalizeCollectionId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  let candidate = raw.replace(/^collection\s*:\s*/i, "").trim();
+
+  try {
+    const parsed = new URL(candidate);
+    if (/^(www\.)?archive\.org$/i.test(parsed.hostname)) {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const detailsIndex = parts.findIndex((part) => part.toLowerCase() === "details");
+      if (detailsIndex >= 0 && parts[detailsIndex + 1]) {
+        candidate = decodeURIComponent(parts[detailsIndex + 1]);
+      }
+    }
+  } catch {
+    // The user entered an Archive collection identifier rather than a URL.
+  }
+
+  return candidate
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_.-]/g, "")
+      .slice(0, 160);
+}
+
+function humanizeCollectionId(value) {
+  const id = String(value || "").trim();
+  if (!id) return "Unknown collection";
+
+  return id
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function normalizeCollectionValues(value) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+
+  return values
+      .flatMap((entry) => String(entry || "").split(","))
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .filter((entry, index, all) => all.indexOf(entry) === index);
+}
+
+function mergeUniqueStrings(...groups) {
+  const seen = new Set();
+  const merged = [];
+
+  groups.flat().forEach((value) => {
+    const normalized = String(value || "").trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    merged.push(normalized);
+  });
+
+  return merged;
+}
+
+function readCustomCollections() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_COLLECTIONS_STORAGE_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set();
+    return parsed
+        .map((collection) => {
+          const id = normalizeCollectionId(collection?.id);
+          const label = String(collection?.label || "").trim() || humanizeCollectionId(id);
+          return id ? { id, label, description: `Custom Archive collection: ${id}`, custom: true } : null;
+        })
+        .filter((collection) => {
+          if (!collection || seen.has(collection.id)) return false;
+          seen.add(collection.id);
+          return true;
+        });
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomCollections(collections) {
+  try {
+    localStorage.setItem(
+        CUSTOM_COLLECTIONS_STORAGE_KEY,
+        JSON.stringify(
+            collections.map(({ id, label }) => ({ id, label }))
+        )
+    );
+  } catch {
+    // Searching still works when browser storage is unavailable.
+  }
+}
+
+function createCollectionLabelMap(collections) {
+  return new Map(
+      collections.map((collection) => [collection.id, collection.label || humanizeCollectionId(collection.id)])
+  );
+}
+
+function resolveCollectionLabels(collectionIds, collectionLabelMap) {
+  return normalizeCollectionValues(collectionIds).map(
+      (collectionId) => collectionLabelMap.get(collectionId) || humanizeCollectionId(collectionId)
+  );
+}
 
 const pageSx = {
   minHeight: "100vh",
@@ -381,6 +489,8 @@ function createArchivePlaylistItem(item, file) {
     sourceType: "Archive.org",
     detailsUrl: item.detailsUrl || getArchiveDetailsUrl(item.identifier),
     archiveIdentifier: item.identifier,
+    archiveCollectionIds: item.collectionIds || [],
+    archiveCollectionNames: item.collectionNames || [],
     size: Number(file.size || 0),
   };
 }
@@ -391,6 +501,18 @@ function appendUniquePlaylistItems(currentItems, newItems) {
     if (item?.url) byUrl.set(item.url, item);
   });
   return Array.from(byUrl.values());
+}
+
+function appendUniquePlayableItems(currentItems, newItems) {
+  const byIdentifier = new Map();
+
+  [...currentItems, ...newItems].forEach((item) => {
+    if (item?.identifier) {
+      byIdentifier.set(item.identifier, item);
+    }
+  });
+
+  return Array.from(byIdentifier.values());
 }
 
 function isPlayableVideoFile(file) {
@@ -494,18 +616,28 @@ function mapSearchDoc(doc) {
     date: getString(doc?.date),
     downloads: Number(doc?.downloads || 0),
     description: getString(doc?.description),
-    subjects: Array.isArray(doc?.subject) ? doc.subject : getString(doc?.subject).split(",").filter(Boolean),
+    subjects: Array.isArray(doc?.subject)
+        ? doc.subject
+        : getString(doc?.subject).split(",").filter(Boolean),
+    collectionIds: normalizeCollectionValues(doc?.collection),
     detailsUrl: getArchiveDetailsUrl(identifier),
   };
 }
 
-function mapMetadataToPlayableItem(searchItem, metadata) {
+function mapMetadataToPlayableItem(searchItem, metadata, collectionLabelMap) {
   const files = Array.isArray(metadata?.files) ? metadata.files : [];
-  const playableFiles = files.filter(isPlayableVideoFile).sort((a, b) => getPlayableVideoScore(b) - getPlayableVideoScore(a));
+  const playableFiles = files
+      .filter(isPlayableVideoFile)
+      .sort((a, b) => getPlayableVideoScore(b) - getPlayableVideoScore(a));
   const posterFile = getBestPosterFile(files);
   const title = getString(metadata?.metadata?.title) || searchItem.title;
 
   if (!playableFiles.length) return null;
+
+  const collectionIds = mergeUniqueStrings(
+      searchItem.collectionIds,
+      normalizeCollectionValues(metadata?.metadata?.collection)
+  );
 
   return {
     ...searchItem,
@@ -513,13 +645,15 @@ function mapMetadataToPlayableItem(searchItem, metadata) {
     creator: getString(metadata?.metadata?.creator) || searchItem.creator,
     date: getString(metadata?.metadata?.date) || searchItem.date,
     description: getString(metadata?.metadata?.description) || searchItem.description,
+    collectionIds,
+    collectionNames: resolveCollectionLabels(collectionIds, collectionLabelMap),
     playableFiles,
     posterUrl: getArchiveImageUrl(searchItem.identifier, posterFile),
     metadata,
   };
 }
 
-function CollectionPicker({ selected, onChange }) {
+function CollectionPicker({ collections, selected, onChange, onRemoveCustom }) {
   const toggleCollection = (collectionId) => {
     const next = selected.includes(collectionId)
         ? selected.filter((id) => id !== collectionId)
@@ -529,29 +663,62 @@ function CollectionPicker({ selected, onChange }) {
 
   return (
       <Grid container spacing={1.25}>
-        {VIDEO_COLLECTIONS.map((collection) => (
+        {collections.map((collection) => (
             <Grid item xs={12} sm={6} md={4} key={collection.id}>
-              <Paper sx={{ ...softCardSx, p: 1.25 }}>
-                <FormControlLabel
-                    sx={{ alignItems: "flex-start", m: 0, gap: 1 }}
-                    control={
-                      <Checkbox
-                          checked={selected.includes(collection.id)}
-                          onChange={() => toggleCollection(collection.id)}
-                          sx={{ color: "rgba(255,255,255,0.55)", pt: 0.25 }}
-                      />
-                    }
-                    label={
-                      <Box>
-                        <Typography sx={{ fontWeight: 900, fontSize: 14 }}>
-                          {collection.label}
-                        </Typography>
-                        <Typography sx={{ color: "rgba(244,248,255,0.64)", fontSize: 12.5 }}>
-                          {collection.description}
-                        </Typography>
-                      </Box>
-                    }
-                />
+              <Paper sx={{ ...softCardSx, p: 1.25, height: "100%" }}>
+                <Stack direction="row" spacing={0.5} alignItems="flex-start">
+                  <FormControlLabel
+                      sx={{ alignItems: "flex-start", m: 0, gap: 1, flex: 1 }}
+                      control={
+                        <Checkbox
+                            checked={selected.includes(collection.id)}
+                            onChange={() => toggleCollection(collection.id)}
+                            sx={{ color: "rgba(255,255,255,0.55)", pt: 0.25 }}
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Typography sx={{ fontWeight: 900, fontSize: 14 }}>
+                              {collection.label}
+                            </Typography>
+                            {collection.custom ? (
+                                <Chip
+                                    label="Custom"
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      bgcolor: "rgba(179,140,255,0.14)",
+                                      color: "#eadfff",
+                                      fontWeight: 800,
+                                    }}
+                                />
+                            ) : null}
+                          </Stack>
+                          <Typography sx={{ color: "rgba(244,248,255,0.64)", fontSize: 12.5 }}>
+                            {collection.description}
+                          </Typography>
+                          <Typography
+                              component="code"
+                              sx={{ color: "rgba(158,232,255,0.78)", fontSize: 11.5 }}
+                          >
+                            {collection.id}
+                          </Typography>
+                        </Box>
+                      }
+                  />
+                  {collection.custom ? (
+                      <Tooltip title="Remove custom collection">
+                        <IconButton
+                            size="small"
+                            onClick={() => onRemoveCustom(collection.id)}
+                            sx={{ color: "rgba(255,255,255,0.62)" }}
+                        >
+                          <DeleteOutlineRounded fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                  ) : null}
+                </Stack>
               </Paper>
             </Grid>
         ))}
@@ -721,6 +888,26 @@ function VideoResultCard({ item }) {
                   />
                 </Stack>
 
+                {item.collectionIds?.length ? (
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                      {item.collectionIds.map((collectionId, index) => (
+                          <Tooltip title={`Archive collection ID: ${collectionId}`} key={collectionId}>
+                            <Chip
+                                size="small"
+                                icon={<FolderRounded />}
+                                label={item.collectionNames?.[index] || humanizeCollectionId(collectionId)}
+                                sx={{
+                                  bgcolor: "rgba(179,140,255,0.12)",
+                                  color: "#eadfff",
+                                  fontWeight: 850,
+                                  "& .MuiChip-icon": { color: "#c7a8ff" },
+                                }}
+                            />
+                          </Tooltip>
+                      ))}
+                    </Stack>
+                ) : null}
+
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 950, lineHeight: 1.12 }}>
                     {item.title}
@@ -837,77 +1024,247 @@ export default function Archive() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    console.info(`[Archive] ${ARCHIVE_PAGE_BUILD}: direct Archive JSON and native media playback.`);
+    console.info(
+        `[Archive] ${ARCHIVE_PAGE_BUILD}: paginated Archive JSON, custom collections, and native media playback.`
+    );
   }, []);
+
   const [query, setQuery] = useState("");
+  const [customCollections, setCustomCollections] = useState(() => readCustomCollections());
   const [selectedCollections, setSelectedCollections] = useState(DEFAULT_COLLECTIONS);
+  const [customCollectionId, setCustomCollectionId] = useState("");
+  const [customCollectionLabel, setCustomCollectionLabel] = useState("");
+  const [customCollectionError, setCustomCollectionError] = useState("");
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState("");
   const [searched, setSearched] = useState(false);
   const [showCollections, setShowCollections] = useState(false);
-  const [progress, setProgress] = useState({ checked: 0, total: 0 });
+  const [progress, setProgress] = useState({ checked: 0, total: 0, page: 0 });
   const [playlistNotice, setPlaylistNotice] = useState("");
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalFound, setTotalFound] = useState(0);
+  const [hasMorePages, setHasMorePages] = useState(false);
   const abortRef = useRef(null);
+  const searchSnapshotRef = useRef({ query: "", collectionIds: DEFAULT_COLLECTIONS });
+
+  const allCollections = useMemo(() => {
+    const builtInIds = new Set(VIDEO_COLLECTIONS.map((collection) => collection.id));
+    return [
+      ...VIDEO_COLLECTIONS,
+      ...customCollections.filter((collection) => !builtInIds.has(collection.id)),
+    ];
+  }, [customCollections]);
+
+  const collectionLabelMap = useMemo(
+      () => createCollectionLabelMap(allCollections),
+      [allCollections]
+  );
 
   const selectedCollectionLabels = useMemo(
       () =>
-          VIDEO_COLLECTIONS.filter((collection) => selectedCollections.includes(collection.id))
-              .map((collection) => collection.label)
+          selectedCollections
+              .map(
+                  (collectionId) =>
+                      collectionLabelMap.get(collectionId) || humanizeCollectionId(collectionId)
+              )
               .join(", "),
-      [selectedCollections]
+      [collectionLabelMap, selectedCollections]
   );
 
-  const runSearch = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const totalPages = totalFound
+      ? Math.ceil(totalFound / ARCHIVE_SEARCH_BATCH_SIZE)
+      : 0;
+  const loading = Boolean(loadingMode);
+  const loadingMore = loadingMode === "more";
 
-    setLoading(true);
-    setSearched(true);
-    setError("");
-    setResults([]);
-    setProgress({ checked: 0, total: 0 });
+  const addCustomCollection = () => {
+    const id = normalizeCollectionId(customCollectionId);
+    const label = String(customCollectionLabel || "").trim() || humanizeCollectionId(id);
 
-    try {
-      const searchUrl = buildArchiveAdvancedSearchUrl(query, selectedCollections, 1);
-      const searchData = await fetchArchiveJson(searchUrl, controller.signal);
-      const docs = (searchData?.response?.docs || []).map(mapSearchDoc).filter((doc) => doc.identifier);
-      const candidates = docs.slice(0, MAX_METADATA_LOOKUPS);
+    if (!id) {
+      setCustomCollectionError(
+          "Enter an Archive.org collection identifier or paste its /details/ collection URL."
+      );
+      return;
+    }
 
-      setProgress({ checked: 0, total: candidates.length });
+    const builtIn = VIDEO_COLLECTIONS.find((collection) => collection.id === id);
+    if (builtIn) {
+      setSelectedCollections((current) =>
+          current.includes(id) ? current : [...current, id]
+      );
+      setCustomCollectionError("");
+      setCustomCollectionId("");
+      setCustomCollectionLabel("");
+      return;
+    }
 
-      const playableItems = [];
+    setCustomCollections((current) => {
+      const nextCollection = {
+        id,
+        label,
+        description: `Custom Archive collection: ${id}`,
+        custom: true,
+      };
+      const next = [
+        ...current.filter((collection) => collection.id !== id),
+        nextCollection,
+      ];
+      writeCustomCollections(next);
+      return next;
+    });
 
-      for (let index = 0; index < candidates.length; index += 1) {
-        const item = candidates[index];
-        const metadataUrl = `https://archive.org/metadata/${encodeURIComponent(item.identifier)}`;
+    setSelectedCollections((current) =>
+        current.includes(id) ? current : [...current, id]
+    );
+    setCustomCollectionError("");
+    setCustomCollectionId("");
+    setCustomCollectionLabel("");
+  };
+
+  const removeCustomCollection = (collectionId) => {
+    setCustomCollections((current) => {
+      const next = current.filter((collection) => collection.id !== collectionId);
+      writeCustomCollections(next);
+      return next;
+    });
+
+    setSelectedCollections((current) => {
+      const next = current.filter((id) => id !== collectionId);
+      return next.length ? next : DEFAULT_COLLECTIONS;
+    });
+  };
+
+  const fetchPlayablePage = useCallback(
+      async ({ pageNumber, append, searchTerm, collectionIds }) => {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        setLoadingMode(append ? "more" : "search");
+        setSearched(true);
+        setError("");
+        setPlaylistNotice("");
+        setProgress({ checked: 0, total: 0, page: pageNumber });
+
+        if (!append) {
+          setResults([]);
+          setCurrentPage(0);
+          setTotalFound(0);
+          setHasMorePages(false);
+        }
 
         try {
-          const metadata = await fetchArchiveJson(metadataUrl, controller.signal);
-          const playableItem = mapMetadataToPlayableItem(item, metadata);
-          if (playableItem) {
-            playableItems.push(playableItem);
-            setResults([...playableItems]);
-          }
-        } catch (metadataError) {
-          if (metadataError?.name === "AbortError") throw metadataError;
-        } finally {
-          setProgress({ checked: index + 1, total: candidates.length });
-        }
-      }
+          const searchUrl = buildArchiveAdvancedSearchUrl(
+              searchTerm,
+              collectionIds,
+              pageNumber
+          );
+          const searchData = await fetchArchiveJson(searchUrl, controller.signal);
+          const response = searchData?.response || {};
+          const docs = (response.docs || [])
+              .map(mapSearchDoc)
+              .filter((doc) => doc.identifier);
+          const archiveTotal = Number(response.numFound || 0);
+          const labelMapForRequest = new Map(collectionLabelMap);
 
-      if (!playableItems.length) {
-        setError("No browser-playable Archive videos were found for that search. Try a broader term or more collections.");
-      }
-    } catch (searchError) {
-      if (searchError?.name !== "AbortError") {
-        setError(searchError?.message || "Archive video search failed.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [query, selectedCollections]);
+          setTotalFound(archiveTotal);
+          setProgress({ checked: 0, total: docs.length, page: pageNumber });
+
+          const playableItems = [];
+
+          for (let index = 0; index < docs.length; index += 1) {
+            const item = docs[index];
+            const metadataUrl = `https://archive.org/metadata/${encodeURIComponent(
+                item.identifier
+            )}`;
+
+            try {
+              const metadata = await fetchArchiveJson(metadataUrl, controller.signal);
+              const playableItem = mapMetadataToPlayableItem(
+                  item,
+                  metadata,
+                  labelMapForRequest
+              );
+
+              if (playableItem) {
+                playableItems.push(playableItem);
+                setResults((current) =>
+                    appendUniquePlayableItems(current, [playableItem])
+                );
+              }
+            } catch (metadataError) {
+              if (metadataError?.name === "AbortError") throw metadataError;
+            } finally {
+              setProgress({
+                checked: index + 1,
+                total: docs.length,
+                page: pageNumber,
+              });
+            }
+          }
+
+          const morePagesAvailable =
+              docs.length > 0 &&
+              pageNumber * ARCHIVE_SEARCH_BATCH_SIZE < archiveTotal;
+
+          setCurrentPage(pageNumber);
+          setHasMorePages(morePagesAvailable);
+
+          if (!playableItems.length) {
+            if (append) {
+              setError(
+                  `Archive page ${pageNumber} had no browser-playable derivatives. You can continue to the next page${
+                      morePagesAvailable ? "" : ", but this was the final page"
+                  }.`
+              );
+            } else {
+              setError(
+                  "No browser-playable Archive videos were found on the first result page. Try a broader term, select more collections, or load another page when available."
+              );
+            }
+          }
+        } catch (searchError) {
+          if (searchError?.name !== "AbortError") {
+            setError(searchError?.message || "Archive video search failed.");
+          }
+        } finally {
+          setLoadingMode("");
+        }
+      },
+      [collectionLabelMap]
+  );
+
+  const runSearch = useCallback(() => {
+    const collectionIds = selectedCollections.length
+        ? [...selectedCollections]
+        : [...DEFAULT_COLLECTIONS];
+    const snapshot = {
+      query,
+      collectionIds,
+    };
+
+    searchSnapshotRef.current = snapshot;
+    return fetchPlayablePage({
+      pageNumber: 1,
+      append: false,
+      searchTerm: snapshot.query,
+      collectionIds: snapshot.collectionIds,
+    });
+  }, [fetchPlayablePage, query, selectedCollections]);
+
+  const loadMore = useCallback(() => {
+    if (loading || !hasMorePages) return;
+
+    const snapshot = searchSnapshotRef.current;
+    return fetchPlayablePage({
+      pageNumber: currentPage + 1,
+      append: true,
+      searchTerm: snapshot.query,
+      collectionIds: snapshot.collectionIds,
+    });
+  }, [currentPage, fetchPlayablePage, hasMorePages, loading]);
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -920,11 +1277,19 @@ export default function Archive() {
     setResults([]);
     setError("");
     setSearched(false);
-    setProgress({ checked: 0, total: 0 });
+    setProgress({ checked: 0, total: 0, page: 0 });
+    setCurrentPage(0);
+    setTotalFound(0);
+    setHasMorePages(false);
+    setLoadingMode("");
+    setPlaylistNotice("");
+    searchSnapshotRef.current = { query: "", collectionIds: DEFAULT_COLLECTIONS };
   };
 
   const loadingProgress =
-      progress.total > 0 ? Math.round((progress.checked / progress.total) * 100) : 0;
+      progress.total > 0
+          ? Math.round((progress.checked / progress.total) * 100)
+          : 0;
 
   const addAllResultsToPlayer = (openPlayer) => {
     const playlistItems = results
@@ -941,7 +1306,9 @@ export default function Archive() {
         playlistItems
     );
     writePlayerPlaylist(nextPlaylist);
-    setPlaylistNotice(`${playlistItems.length} Archive videos added to the /player playlist.`);
+    setPlaylistNotice(
+        `${playlistItems.length} Archive videos added to the /player playlist.`
+    );
 
     if (openPlayer) {
       navigate(buildPlayerRoute(playlistItems[0], true));
@@ -950,7 +1317,7 @@ export default function Archive() {
 
   return (
       <GradientPage sx={pageSx}>
-        <AppNavBar/>
+        <AppNavBar />
         <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
           <Stack spacing={2.5}>
             <Paper
@@ -962,7 +1329,12 @@ export default function Archive() {
                   zIndex: 5,
                 }}
             >
-              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+              <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  justifyContent="space-between"
+              >
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Button
                       component={RouterLink}
@@ -992,7 +1364,11 @@ export default function Archive() {
                   >
                     Open /player Playlist
                   </Button>
-                  <Button onClick={resetSearch} startIcon={<RestartAltRounded />} sx={{ color: "#f4f8ff", borderRadius: 999 }}>
+                  <Button
+                      onClick={resetSearch}
+                      startIcon={<RestartAltRounded />}
+                      sx={{ color: "#f4f8ff", borderRadius: 999 }}
+                  >
                     Reset
                   </Button>
                 </Stack>
@@ -1015,14 +1391,26 @@ export default function Archive() {
                       >
                         Search playable Archive videos
                       </Typography>
-                      <Typography sx={{ color: "rgba(244,248,255,0.72)", maxWidth: 720 }}>
-                        Search Archive.org directly, inspect item metadata, send selections to /player, and only show files
-                        the browser can actually play: MP4, WebM, Ogg, and H.264 derivatives.
+                      <Typography
+                          sx={{ color: "rgba(244,248,255,0.72)", maxWidth: 720 }}
+                      >
+                        Search multiple Archive.org result pages, add your own
+                        collection identifiers, inspect item metadata, and send
+                        browser-playable MP4, WebM, Ogg, and H.264 files to /player.
                       </Typography>
                       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        <Chip label="Direct range media playback" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                        <Chip label="No download buttons" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
-                        <Chip label="Download, serve, IA range fallback" sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }} />
+                        <Chip
+                            label="Paginated Archive search"
+                            sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }}
+                        />
+                        <Chip
+                            label="Custom collections"
+                            sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }}
+                        />
+                        <Chip
+                            label="Collection names on results"
+                            sx={{ bgcolor: "rgba(255,255,255,0.08)", color: "#f4f8ff" }}
+                        />
                       </Stack>
                     </Stack>
                   </Grid>
@@ -1040,11 +1428,15 @@ export default function Archive() {
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             onKeyDown={(event) => {
-                              if (event.key === "Enter") runSearch();
+                              if (event.key === "Enter" && !loading) runSearch();
                             }}
                             placeholder="Search videos, creators, subjects, identifiers..."
                             InputProps={{
-                              startAdornment: <SearchRounded sx={{ mr: 1, color: "rgba(244,248,255,0.55)" }} />,
+                              startAdornment: (
+                                  <SearchRounded
+                                      sx={{ mr: 1, color: "rgba(244,248,255,0.55)" }}
+                                  />
+                              ),
                             }}
                             sx={{
                               "& .MuiOutlinedInput-root": {
@@ -1058,20 +1450,35 @@ export default function Archive() {
                           <Button
                               onClick={runSearch}
                               disabled={loading}
-                              startIcon={loading ? <CircularProgress size={18} /> : <SearchRounded />}
+                              startIcon={
+                                loadingMode === "search" ? (
+                                    <CircularProgress size={18} />
+                                ) : (
+                                    <SearchRounded />
+                                )
+                              }
                               sx={primaryButtonSx}
                           >
-                            {loading ? "Finding playable videos" : "Search videos"}
+                            {loadingMode === "search"
+                                ? "Finding playable videos"
+                                : "Search videos"}
                           </Button>
                           <Button
                               onClick={() => setShowCollections((value) => !value)}
                               variant="outlined"
-                              sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                              startIcon={<FolderRounded />}
+                              sx={{
+                                borderRadius: 999,
+                                color: "#dff8ff",
+                                borderColor: "rgba(158,232,255,0.45)",
+                              }}
                           >
-                            Collections
+                            Collections ({selectedCollections.length})
                           </Button>
                         </Stack>
-                        <Typography sx={{ color: "rgba(244,248,255,0.6)", fontSize: 13 }}>
+                        <Typography
+                            sx={{ color: "rgba(244,248,255,0.6)", fontSize: 13 }}
+                        >
                           Searching: {selectedCollectionLabels || "default video collections"}
                         </Typography>
                       </Stack>
@@ -1084,11 +1491,100 @@ export default function Archive() {
             <Collapse in={showCollections}>
               <Card sx={cardSx}>
                 <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
-                  <Stack spacing={1.5}>
-                    <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                      Video collections
-                    </Typography>
-                    <CollectionPicker selected={selectedCollections} onChange={setSelectedCollections} />
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 950 }}>
+                        Video collections
+                      </Typography>
+                      <Typography sx={{ color: "rgba(244,248,255,0.65)", fontSize: 13 }}>
+                        Use an Archive collection identifier such as
+                        <Box component="span" sx={{ color: "#9ee8ff", mx: 0.5 }}>
+                          prelinger
+                        </Box>
+                        or paste an Archive.org /details/ collection URL.
+                      </Typography>
+                    </Box>
+
+                    <Paper sx={{ ...softCardSx, p: { xs: 1.5, md: 2 } }}>
+                      <Stack spacing={1.25}>
+                        <Typography sx={{ fontWeight: 900 }}>
+                          Add a custom collection
+                        </Typography>
+                        <Grid container spacing={1.25}>
+                          <Grid item xs={12} md={5}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Collection identifier or Archive URL"
+                                value={customCollectionId}
+                                onChange={(event) => {
+                                  setCustomCollectionId(event.target.value);
+                                  setCustomCollectionError("");
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") addCustomCollection();
+                                }}
+                                placeholder="example: prelinger or archive.org/details/prelinger"
+                                sx={{
+                                  "& .MuiOutlinedInput-root": {
+                                    color: "#f4f8ff",
+                                    background: "rgba(0,0,0,0.18)",
+                                  },
+                                  "& .MuiInputLabel-root": {
+                                    color: "rgba(244,248,255,0.66)",
+                                  },
+                                }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={5}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="Display name (optional)"
+                                value={customCollectionLabel}
+                                onChange={(event) =>
+                                    setCustomCollectionLabel(event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") addCustomCollection();
+                                }}
+                                placeholder="My favorite films"
+                                sx={{
+                                  "& .MuiOutlinedInput-root": {
+                                    color: "#f4f8ff",
+                                    background: "rgba(0,0,0,0.18)",
+                                  },
+                                  "& .MuiInputLabel-root": {
+                                    color: "rgba(244,248,255,0.66)",
+                                  },
+                                }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={2}>
+                            <Button
+                                fullWidth
+                                onClick={addCustomCollection}
+                                startIcon={<AddRounded />}
+                                sx={{ ...primaryButtonSx, minHeight: 40 }}
+                            >
+                              Add
+                            </Button>
+                          </Grid>
+                        </Grid>
+                        {customCollectionError ? (
+                            <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                              {customCollectionError}
+                            </Alert>
+                        ) : null}
+                      </Stack>
+                    </Paper>
+
+                    <CollectionPicker
+                        collections={allCollections}
+                        selected={selectedCollections}
+                        onChange={setSelectedCollections}
+                        onRemoveCustom={removeCustomCollection}
+                    />
                   </Stack>
                 </CardContent>
               </Card>
@@ -1100,13 +1596,21 @@ export default function Archive() {
                     <Stack direction="row" spacing={1} alignItems="center">
                       <CircularProgress size={18} />
                       <Typography sx={{ fontWeight: 850 }}>
-                        Checking Archive metadata for playable files
+                        {loadingMore
+                            ? `Loading Archive result page ${currentPage + 1}`
+                            : "Checking Archive metadata for playable files"}
                       </Typography>
                     </Stack>
-                    <LinearProgress variant={progress.total ? "determinate" : "indeterminate"} value={loadingProgress} />
+                    <LinearProgress
+                        variant={progress.total ? "determinate" : "indeterminate"}
+                        value={loadingProgress}
+                    />
                     {progress.total ? (
-                        <Typography sx={{ color: "rgba(244,248,255,0.66)", fontSize: 13 }}>
-                          Checked {progress.checked} of {progress.total} candidate items.
+                        <Typography
+                            sx={{ color: "rgba(244,248,255,0.66)", fontSize: 13 }}
+                        >
+                          Page {progress.page}: checked {progress.checked} of {progress.total}
+                          candidate items.
                         </Typography>
                     ) : null}
                   </Stack>
@@ -1114,18 +1618,26 @@ export default function Archive() {
             ) : null}
 
             {error ? (
-                <Alert severity={results.length ? "info" : "warning"} sx={{ borderRadius: 2 }}>
+                <Alert
+                    severity={results.length ? "info" : "warning"}
+                    onClose={() => setError("")}
+                    sx={{ borderRadius: 2 }}
+                >
                   {error}
                 </Alert>
             ) : null}
 
             {playlistNotice ? (
-                <Alert severity="success" onClose={() => setPlaylistNotice("")} sx={{ borderRadius: 2 }}>
+                <Alert
+                    severity="success"
+                    onClose={() => setPlaylistNotice("")}
+                    sx={{ borderRadius: 2 }}
+                >
                   {playlistNotice}
                 </Alert>
             ) : null}
 
-            {results.length ? (
+            {searched ? (
                 <Paper sx={{ ...cardSx, p: 1.5 }}>
                   <Stack
                       direction={{ xs: "column", sm: "row" }}
@@ -1133,26 +1645,41 @@ export default function Archive() {
                       alignItems={{ xs: "stretch", sm: "center" }}
                       justifyContent="space-between"
                   >
-                    <Typography sx={{ fontWeight: 900 }}>
-                      {results.length} playable Archive videos ready
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      <Button
-                          onClick={() => addAllResultsToPlayer(false)}
-                          startIcon={<PlaylistAddRounded />}
-                          variant="outlined"
-                          sx={{ borderRadius: 999, color: "#dff8ff", borderColor: "rgba(158,232,255,0.45)" }}
+                    <Stack spacing={0.25}>
+                      <Typography sx={{ fontWeight: 900 }}>
+                        {results.length} playable Archive videos ready
+                      </Typography>
+                      <Typography
+                          sx={{ color: "rgba(244,248,255,0.62)", fontSize: 13 }}
                       >
-                        Add all to playlist
-                      </Button>
-                      <Button
-                          onClick={() => addAllResultsToPlayer(true)}
-                          startIcon={<QueuePlayNextRounded />}
-                          sx={primaryButtonSx}
-                      >
-                        Play all in /player
-                      </Button>
+                        {totalFound
+                            ? `${formatCount(totalFound)} matching Archive items across ${totalPages} result pages. Scanned through page ${currentPage || 1}.`
+                            : `Scanned through page ${currentPage || 1}.`}
+                      </Typography>
                     </Stack>
+                    {results.length ? (
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          <Button
+                              onClick={() => addAllResultsToPlayer(false)}
+                              startIcon={<PlaylistAddRounded />}
+                              variant="outlined"
+                              sx={{
+                                borderRadius: 999,
+                                color: "#dff8ff",
+                                borderColor: "rgba(158,232,255,0.45)",
+                              }}
+                          >
+                            Add all loaded videos
+                          </Button>
+                          <Button
+                              onClick={() => addAllResultsToPlayer(true)}
+                              startIcon={<QueuePlayNextRounded />}
+                              sx={primaryButtonSx}
+                          >
+                            Play all loaded videos
+                          </Button>
+                        </Stack>
+                    ) : null}
                   </Stack>
                 </Paper>
             ) : null}
@@ -1163,10 +1690,49 @@ export default function Archive() {
               ))}
             </Stack>
 
+            {searched && (hasMorePages || loadingMore) ? (
+                <Paper sx={{ ...cardSx, p: { xs: 2, md: 2.5 }, textAlign: "center" }}>
+                  <Stack spacing={1.25} alignItems="center">
+                    <Typography sx={{ fontWeight: 950 }}>
+                      Load the next Archive result page
+                    </Typography>
+                    <Typography
+                        sx={{ color: "rgba(244,248,255,0.65)", fontSize: 13 }}
+                    >
+                      Next page: {currentPage + 1}
+                      {totalPages ? ` of ${totalPages}` : ""}. New playable videos will
+                      be appended without replacing the videos already loaded.
+                    </Typography>
+                    <Button
+                        onClick={loadMore}
+                        disabled={loading || !hasMorePages}
+                        startIcon={
+                          loadingMore ? <CircularProgress size={18} /> : <AddRounded />
+                        }
+                        sx={primaryButtonSx}
+                    >
+                      {loadingMore ? "Loading more videos" : "Load more videos"}
+                    </Button>
+                  </Stack>
+                </Paper>
+            ) : null}
+
+            {!loading && searched && !hasMorePages && currentPage > 0 ? (
+                <Paper sx={{ ...softCardSx, p: 2, textAlign: "center" }}>
+                  <Typography sx={{ color: "rgba(244,248,255,0.68)" }}>
+                    You reached the final Archive result page for this search.
+                  </Typography>
+                </Paper>
+            ) : null}
+
             {!loading && searched && !results.length && !error ? (
                 <Paper sx={{ ...cardSx, p: 4, textAlign: "center" }}>
-                  <VideoFileRounded sx={{ fontSize: 54, color: "rgba(255,255,255,0.4)" }} />
-                  <Typography sx={{ mt: 1, fontWeight: 950 }}>No playable videos found.</Typography>
+                  <VideoFileRounded
+                      sx={{ fontSize: 54, color: "rgba(255,255,255,0.4)" }}
+                  />
+                  <Typography sx={{ mt: 1, fontWeight: 950 }}>
+                    No playable videos found yet.
+                  </Typography>
                 </Paper>
             ) : null}
 
@@ -1174,12 +1740,15 @@ export default function Archive() {
                 <Paper sx={{ ...cardSx, p: 3 }}>
                   <Stack spacing={1}>
                     <Typography variant="h6" sx={{ fontWeight: 950 }}>
-                      What this page filters out
+                      How the Archive search works
                     </Typography>
                     <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
                     <Typography sx={{ color: "rgba(244,248,255,0.68)" }}>
-                      Search results are not shown until Archive metadata includes at least one playable video derivative.
-                      Metadata is requested directly from Archive.org. Video files use native download, serve, and IA range-capable URLs without adding a CORS-enforcing media attribute.
+                      Each result page is checked against Archive item metadata and only
+                      items with browser-playable video derivatives are shown. Use Load
+                      more to continue through the same query page by page. Collection
+                      names come from Archive metadata and use your custom display names
+                      whenever a matching custom collection is configured.
                     </Typography>
                   </Stack>
                 </Paper>

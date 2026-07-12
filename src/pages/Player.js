@@ -65,7 +65,10 @@ import {
 } from "../components/components";
 
 const VIDEO_PLAYLIST_STORAGE_KEY = "audiomasterlab-video-playlist-v1";
-const PLAYER_MEDIA_BUILD = "player-native-archive-v4";
+const VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY =
+    "audiomasterlab-video-playlist-library-v2";
+const VIDEO_PLAYLIST_LIBRARY_VERSION = 2;
+const PLAYER_MEDIA_BUILD = "player-named-playlists-smooth-tempo-v5";
 const VIDEO_PLAYER_STATE_STORAGE_KEY = "audiomasterlab-video-player-state-v2";
 const PLAYER_STATE_VERSION = 2;
 const ARCHIVE_PLAYABLE_EXTENSIONS = [".mp4", ".m4v", ".webm", ".ogv", ".ogg"];
@@ -136,8 +139,10 @@ const INITIAL_AUDIO_EFFECTS = {
     treble: 0,
 };
 
-const SOUNDTOUCH_PROCESSOR_URL =
-    "https://cdn.jsdelivr.net/npm/@soundtouchjs/audio-worklet@2.1.0/.dist/soundtouch-processor.js";
+const SOUNDTOUCH_PROCESSOR_URLS = [
+    "https://cdn.jsdelivr.net/npm/@soundtouchjs/audio-worklet@2.1.0/.dist/soundtouch-processor.js",
+    "/soundtouch-processor.js",
+];
 
 const INITIAL_TIME_WARP = {
     enabled: false,
@@ -498,7 +503,56 @@ function normalizePlaylistItem(item) {
     };
 }
 
-function readStoredVideoPlaylist() {
+function appendUniquePlaylistItems(currentItems, newItems) {
+    const itemsByUrl = new Map();
+
+    [...currentItems, ...newItems].forEach((item) => {
+        const normalized = normalizePlaylistItem(item);
+        if (normalized) {
+            itemsByUrl.set(normalized.url, normalized);
+        }
+    });
+
+    return Array.from(itemsByUrl.values());
+}
+
+function makeVideoPlaylistId(name = "playlist") {
+    const seed = `${name}-${Date.now()}-${Math.random()}`;
+    let hash = 2166136261;
+
+    for (let index = 0; index < seed.length; index += 1) {
+        hash ^= seed.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+
+    return `playlist-${(hash >>> 0).toString(36)}`;
+}
+
+function normalizeVideoPlaylist(value, fallbackName = "My Playlist") {
+    const items = Array.isArray(value?.items)
+        ? value.items.map(normalizePlaylistItem).filter(Boolean)
+        : [];
+    const name = String(value?.name || fallbackName).trim() || fallbackName;
+    const createdAt = Number(value?.createdAt || Date.now());
+
+    return {
+        id: String(value?.id || makeVideoPlaylistId(name)),
+        name,
+        items,
+        createdAt,
+        updatedAt: Number(value?.updatedAt || createdAt),
+    };
+}
+
+function createDefaultVideoPlaylist(items = []) {
+    return normalizeVideoPlaylist({
+        id: "playlist-default",
+        name: "My Playlist",
+        items,
+    });
+}
+
+function readLegacyVideoPlaylist() {
     try {
         const parsed = JSON.parse(
             localStorage.getItem(VIDEO_PLAYLIST_STORAGE_KEY) || "[]"
@@ -512,31 +566,90 @@ function readStoredVideoPlaylist() {
     }
 }
 
-function writeStoredVideoPlaylist(items) {
-    try {
-        const persistentItems = items.filter(
-            (item) => item?.url && !String(item.url).startsWith("blob:")
-        );
-        localStorage.setItem(
-            VIDEO_PLAYLIST_STORAGE_KEY,
-            JSON.stringify(persistentItems)
-        );
-    } catch {
-        // The in-memory playlist still works when storage is unavailable.
-    }
+function normalizeVideoPlaylistLibrary(value) {
+    const rawPlaylists = Array.isArray(value?.playlists)
+        ? value.playlists
+        : [];
+    const playlists = rawPlaylists
+        .map((playlist, index) =>
+            normalizeVideoPlaylist(playlist, `Playlist ${index + 1}`)
+        )
+        .filter(Boolean);
+    const safePlaylists = playlists.length
+        ? playlists
+        : [createDefaultVideoPlaylist()];
+    const requestedActiveId = String(value?.activePlaylistId || "");
+    const activePlaylistId = safePlaylists.some(
+        (playlist) => playlist.id === requestedActiveId
+    )
+        ? requestedActiveId
+        : safePlaylists[0].id;
+
+    return {
+        version: VIDEO_PLAYLIST_LIBRARY_VERSION,
+        activePlaylistId,
+        playlists: safePlaylists,
+    };
 }
 
-function appendUniquePlaylistItems(currentItems, newItems) {
-    const itemsByUrl = new Map();
+function readStoredVideoPlaylistLibrary() {
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY) || "null"
+        );
 
-    [...currentItems, ...newItems].forEach((item) => {
-        const normalized = normalizePlaylistItem(item);
-        if (normalized) {
-            itemsByUrl.set(normalized.url, normalized);
+        if (
+            parsed &&
+            parsed.version === VIDEO_PLAYLIST_LIBRARY_VERSION &&
+            Array.isArray(parsed.playlists)
+        ) {
+            return normalizeVideoPlaylistLibrary(parsed);
         }
-    });
+    } catch {
+        // Fall through to the legacy single-playlist migration.
+    }
 
-    return Array.from(itemsByUrl.values());
+    const migratedPlaylist = createDefaultVideoPlaylist(
+        readLegacyVideoPlaylist()
+    );
+
+    return normalizeVideoPlaylistLibrary({
+        activePlaylistId: migratedPlaylist.id,
+        playlists: [migratedPlaylist],
+    });
+}
+
+function writeStoredVideoPlaylistLibrary(value) {
+    try {
+        const normalized = normalizeVideoPlaylistLibrary(value);
+        const persistentPlaylists = normalized.playlists.map((playlist) => ({
+            ...playlist,
+            items: playlist.items.filter(
+                (item) => item?.url && !String(item.url).startsWith("blob:")
+            ),
+        }));
+        const persistentState = {
+            ...normalized,
+            playlists: persistentPlaylists,
+        };
+        const activePlaylist = persistentPlaylists.find(
+            (playlist) => playlist.id === persistentState.activePlaylistId
+        );
+
+        localStorage.setItem(
+            VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY,
+            JSON.stringify(persistentState)
+        );
+
+        // Keep the original single-playlist key synchronized so older Archive
+        // and Video pages can continue adding to and reading the active list.
+        localStorage.setItem(
+            VIDEO_PLAYLIST_STORAGE_KEY,
+            JSON.stringify(activePlaylist?.items || [])
+        );
+    } catch {
+        // The in-memory playlist library still works without localStorage.
+    }
 }
 
 function getArchiveDetailsIdentifier(value) {
@@ -1148,6 +1261,15 @@ export default function Player() {
     const displacementRef = useRef(null);
     const warpAnimationFrameRef = useRef(null);
     const warpReadoutTimeRef = useRef(0);
+    const lastWarpFrameTimeRef = useRef(0);
+    const smoothedTempoRef = useRef(1);
+    const soundTouchUnderrunRef = useRef(0);
+    const soundTouchMetricLogTimeRef = useRef(0);
+    const lastAppliedTempoRef = useRef(1);
+    const lastAppliedPitchRef = useRef(0);
+    const lastAppliedFinePitchRef = useRef(0);
+    const lastVideoTransformRef = useRef("");
+    const lastVideoFilterRef = useRef("");
     const transcriberRef = useRef(null);
     const loadedModelIdRef = useRef("");
     const subtitleObjectUrlRef = useRef("");
@@ -1174,7 +1296,16 @@ export default function Player() {
     const storedPlayerStateRef = useRef(readStoredPlayerState());
 
     const [urlInput, setUrlInput] = useState("");
-    const [playlist, setPlaylist] = useState(() => readStoredVideoPlaylist());
+    const [playlistState, setPlaylistState] = useState(() =>
+        readStoredVideoPlaylistLibrary()
+    );
+    const [newPlaylistName, setNewPlaylistName] = useState("");
+    const [playlistNameDraft, setPlaylistNameDraft] = useState("");
+    const [editingPlaylistItemId, setEditingPlaylistItemId] = useState("");
+    const [playlistItemDraft, setPlaylistItemDraft] = useState({
+        label: "",
+        url: "",
+    });
     const [activePlaylistIndex, setActivePlaylistIndex] = useState(-1);
     const [playlistAutoplay, setPlaylistAutoplay] = useState(true);
     const [loadedSource, setLoadedSource] = useState("");
@@ -1195,6 +1326,16 @@ export default function Player() {
     );
     const [playbackRate, setPlaybackRate] = useState(() =>
         clamp(Number(storedPlayerStateRef.current?.playbackRate) || 1, 0.25, 4)
+    );
+    const [smoothTempoEnabled, setSmoothTempoEnabled] = useState(
+        storedPlayerStateRef.current?.smoothTempoEnabled !== false
+    );
+    const [tempoSmoothingMs, setTempoSmoothingMs] = useState(() =>
+        clamp(
+            Number(storedPlayerStateRef.current?.tempoSmoothingMs) || 180,
+            20,
+            800
+        )
     );
     const [pitchSemitones, setPitchSemitones] = useState(0);
     const [finePitchCents, setFinePitchCents] = useState(0);
@@ -1234,6 +1375,14 @@ export default function Player() {
     const [subtitleUrl, setSubtitleUrl] = useState("");
 
     const isIOS = useMemo(() => isIOSDevice(), []);
+    const activePlaylist = useMemo(
+        () =>
+            playlistState.playlists.find(
+                (playlist) => playlist.id === playlistState.activePlaylistId
+            ) || playlistState.playlists[0],
+        [playlistState]
+    );
+    const playlist = activePlaylist?.items || [];
     const activePlaylistItem = useMemo(
         () => playlist[activePlaylistIndex] || null,
         [activePlaylistIndex, playlist]
@@ -1260,6 +1409,42 @@ export default function Player() {
             ...current,
         ].slice(0, 120));
     }, []);
+
+    const setPlaylist = useCallback((nextItemsOrUpdater) => {
+        setPlaylistState((current) => {
+            const normalized = normalizeVideoPlaylistLibrary(current);
+            const activeId = normalized.activePlaylistId;
+            const nextPlaylists = normalized.playlists.map((playlist) => {
+                if (playlist.id !== activeId) {
+                    return playlist;
+                }
+
+                const nextItems =
+                    typeof nextItemsOrUpdater === "function"
+                        ? nextItemsOrUpdater(playlist.items)
+                        : nextItemsOrUpdater;
+
+                return {
+                    ...playlist,
+                    items: Array.isArray(nextItems)
+                        ? nextItems.map(normalizePlaylistItem).filter(Boolean)
+                        : playlist.items,
+                    updatedAt: Date.now(),
+                };
+            });
+
+            return {
+                ...normalized,
+                playlists: nextPlaylists,
+            };
+        });
+    }, []);
+
+    useEffect(() => {
+        setPlaylistNameDraft(activePlaylist?.name || "");
+        setEditingPlaylistItemId("");
+        setPlaylistItemDraft({ label: "", url: "" });
+    }, [activePlaylist?.id, activePlaylist?.name]);
 
     const destroyHls = useCallback(() => {
         if (hlsRef.current) {
@@ -1406,20 +1591,26 @@ export default function Player() {
             let soundTouchNode = null;
 
             if (context.audioWorklet) {
-                try {
-                    await SoundTouchNode.register(
-                        context,
-                        SOUNDTOUCH_PROCESSOR_URL
-                    );
-                    soundTouchNode = new SoundTouchNode({
-                        context,
-                    });
+                let registrationError = null;
+
+                for (const processorUrl of SOUNDTOUCH_PROCESSOR_URLS) {
+                    try {
+                        await SoundTouchNode.register(context, processorUrl);
+                        soundTouchNode = new SoundTouchNode({ context });
+                        addLog(
+                            `SoundTouch AudioWorklet loaded from ${processorUrl}.`
+                        );
+                        break;
+                    } catch (error) {
+                        registrationError = error;
+                    }
+                }
+
+                if (!soundTouchNode) {
                     addLog(
-                        "SoundTouch AudioWorklet loaded for independent tempo and pitch."
-                    );
-                } catch (error) {
-                    addLog(
-                        `SoundTouch AudioWorklet could not load: ${error.message}. Falling back to browser playback-rate pitch behavior.`
+                        `SoundTouch AudioWorklet could not load: ${
+                            registrationError?.message || "unknown worklet error"
+                        }. Falling back to the browser's pitch-preserving playback rate.`
                     );
                 }
             } else {
@@ -1465,10 +1656,16 @@ export default function Player() {
 
             if (soundTouchNode) {
                 const time = context.currentTime;
-                soundTouchNode.playbackRate.setValueAtTime(
-                    playbackRate,
-                    time
+                const initialTempo = clamp(
+                    Number(video.playbackRate || playbackRate),
+                    0.25,
+                    4
                 );
+
+                smoothedTempoRef.current = initialTempo;
+                video.playbackRate = initialTempo;
+                video.defaultPlaybackRate = initialTempo;
+                soundTouchNode.playbackRate.setValueAtTime(initialTempo, time);
                 soundTouchNode.pitchSemitones.setValueAtTime(
                     pitchSemitones,
                     time
@@ -1477,6 +1674,25 @@ export default function Player() {
                     2 ** (finePitchCents / 1200),
                     time
                 );
+
+                soundTouchNode.addEventListener?.("metrics", (event) => {
+                    const metrics = event?.detail;
+                    const underrunCount = Number(metrics?.underrunCount || 0);
+                    const now = performance.now();
+
+                    if (
+                        underrunCount > soundTouchUnderrunRef.current &&
+                        now - soundTouchMetricLogTimeRef.current > 4000
+                    ) {
+                        soundTouchUnderrunRef.current = underrunCount;
+                        soundTouchMetricLogTimeRef.current = now;
+                        addLog(
+                            `SoundTouch recovered from ${underrunCount} short audio render block${
+                                underrunCount === 1 ? "" : "s"
+                            }. Keep tempo nearer 1.0× if the source device is overloaded.`
+                        );
+                    }
+                });
             }
 
             addLog(
@@ -1767,8 +1983,206 @@ export default function Player() {
         });
 
         setPlaylist((current) => appendUniquePlaylistItems(current, [item]));
-        setSuccessMessage("Video added to the playlist.");
-    }, [urlInput]);
+        setSuccessMessage(
+            `Video added to “${activePlaylist?.name || "playlist"}”.`
+        );
+    }, [activePlaylist?.name, setPlaylist, urlInput]);
+
+    const createVideoPlaylist = useCallback(() => {
+        const requestedName = newPlaylistName.trim();
+        const name =
+            requestedName || `Playlist ${playlistState.playlists.length + 1}`;
+        const nextPlaylist = normalizeVideoPlaylist({
+            id: makeVideoPlaylistId(name),
+            name,
+            items: [],
+        });
+
+        setPlaylistState((current) => ({
+            ...normalizeVideoPlaylistLibrary(current),
+            activePlaylistId: nextPlaylist.id,
+            playlists: [
+                ...normalizeVideoPlaylistLibrary(current).playlists,
+                nextPlaylist,
+            ],
+        }));
+        setNewPlaylistName("");
+        setPlaylistNameDraft(name);
+        setActivePlaylistIndex(-1);
+        setEditingPlaylistItemId("");
+        setSuccessMessage(`Created playlist “${name}”.`);
+    }, [newPlaylistName, playlistState.playlists.length]);
+
+    const selectVideoPlaylist = useCallback((playlistId) => {
+        setPlaylistState((current) => {
+            const normalized = normalizeVideoPlaylistLibrary(current);
+
+            if (!normalized.playlists.some((item) => item.id === playlistId)) {
+                return normalized;
+            }
+
+            return {
+                ...normalized,
+                activePlaylistId: playlistId,
+            };
+        });
+        setActivePlaylistIndex(-1);
+        setEditingPlaylistItemId("");
+    }, []);
+
+    const renameActiveVideoPlaylist = useCallback(() => {
+        const nextName = playlistNameDraft.trim();
+
+        if (!nextName) {
+            setErrorMessage("Enter a playlist name before saving it.");
+            return;
+        }
+
+        setPlaylistState((current) => {
+            const normalized = normalizeVideoPlaylistLibrary(current);
+
+            return {
+                ...normalized,
+                playlists: normalized.playlists.map((playlist) =>
+                    playlist.id === normalized.activePlaylistId
+                        ? {
+                            ...playlist,
+                            name: nextName,
+                            updatedAt: Date.now(),
+                        }
+                        : playlist
+                ),
+            };
+        });
+        setSuccessMessage(`Playlist renamed to “${nextName}”.`);
+    }, [playlistNameDraft]);
+
+    const duplicateActiveVideoPlaylist = useCallback(() => {
+        if (!activePlaylist) {
+            return;
+        }
+
+        const copyName = `${activePlaylist.name} Copy`;
+        const copy = normalizeVideoPlaylist({
+            id: makeVideoPlaylistId(copyName),
+            name: copyName,
+            items: activePlaylist.items.map((item) => ({ ...item })),
+        });
+
+        setPlaylistState((current) => {
+            const normalized = normalizeVideoPlaylistLibrary(current);
+            return {
+                ...normalized,
+                activePlaylistId: copy.id,
+                playlists: [...normalized.playlists, copy],
+            };
+        });
+        setActivePlaylistIndex(-1);
+        setPlaylistNameDraft(copyName);
+        setSuccessMessage(`Duplicated “${activePlaylist.name}”.`);
+    }, [activePlaylist]);
+
+    const deleteActiveVideoPlaylist = useCallback(() => {
+        if (playlistState.playlists.length <= 1 || !activePlaylist) {
+            setErrorMessage("Keep at least one playlist. Clear its videos instead.");
+            return;
+        }
+
+        const deletedName = activePlaylist.name;
+
+        setPlaylistState((current) => {
+            const normalized = normalizeVideoPlaylistLibrary(current);
+            const deletedIndex = normalized.playlists.findIndex(
+                (playlist) => playlist.id === normalized.activePlaylistId
+            );
+            const remaining = normalized.playlists.filter(
+                (playlist) => playlist.id !== normalized.activePlaylistId
+            );
+            const nextActive =
+                remaining[Math.min(Math.max(deletedIndex, 0), remaining.length - 1)] ||
+                remaining[0];
+
+            return {
+                ...normalized,
+                activePlaylistId: nextActive.id,
+                playlists: remaining,
+            };
+        });
+        setActivePlaylistIndex(-1);
+        setEditingPlaylistItemId("");
+        setSuccessMessage(`Deleted playlist “${deletedName}”.`);
+    }, [activePlaylist, playlistState.playlists.length]);
+
+    const beginEditPlaylistItem = useCallback((item) => {
+        setEditingPlaylistItemId(item.id);
+        setPlaylistItemDraft({
+            label: item.label,
+            url: item.url,
+        });
+    }, []);
+
+    const saveEditedPlaylistItem = useCallback(() => {
+        const label = playlistItemDraft.label.trim();
+        const urlText = playlistItemDraft.url.trim();
+        let parsedUrl;
+
+        try {
+            parsedUrl = new URL(urlText);
+        } catch {
+            setErrorMessage("The edited playlist item needs a complete URL.");
+            return;
+        }
+
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+            setErrorMessage("Playlist video URLs must use HTTP or HTTPS.");
+            return;
+        }
+
+        setPlaylist((current) =>
+            current.map((item) =>
+                item.id === editingPlaylistItemId
+                    ? normalizePlaylistItem({
+                        ...item,
+                        url: parsedUrl.toString(),
+                        label:
+                            label ||
+                            parsedUrl.pathname.split("/").pop() ||
+                            parsedUrl.hostname,
+                        sourceType: isArchiveUrl(parsedUrl.toString())
+                            ? "Archive.org"
+                            : item.sourceType || "Remote URL",
+                    })
+                    : item
+            )
+        );
+        setEditingPlaylistItemId("");
+        setPlaylistItemDraft({ label: "", url: "" });
+        setSuccessMessage("Playlist video updated.");
+    }, [editingPlaylistItemId, playlistItemDraft, setPlaylist]);
+
+    const movePlaylistItem = useCallback(
+        (fromIndex, direction) => {
+            const toIndex = clamp(fromIndex + direction, 0, playlist.length - 1);
+
+            if (fromIndex === toIndex) {
+                return;
+            }
+
+            setPlaylist((current) => {
+                const next = [...current];
+                const [moved] = next.splice(fromIndex, 1);
+                next.splice(toIndex, 0, moved);
+                return next;
+            });
+
+            setActivePlaylistIndex((currentIndex) => {
+                if (currentIndex === fromIndex) return toIndex;
+                if (currentIndex === toIndex) return fromIndex;
+                return currentIndex;
+            });
+        },
+        [playlist.length, setPlaylist]
+    );
 
     const pauseCurrentMedia = useCallback(() => {
         const video = videoRef.current;
@@ -1995,21 +2409,33 @@ export default function Player() {
 
     const removePlaylistItem = useCallback(
         (index) => {
-            setPlaylist((current) => current.filter((_, itemIndex) => itemIndex !== index));
+            const removedItemId = playlist[index]?.id;
+
+            setPlaylist((current) =>
+                current.filter((_, itemIndex) => itemIndex !== index)
+            );
             setActivePlaylistIndex((currentIndex) => {
                 if (currentIndex === index) return -1;
                 if (currentIndex > index) return currentIndex - 1;
                 return currentIndex;
             });
+
+            if (removedItemId && editingPlaylistItemId === removedItemId) {
+                setEditingPlaylistItemId("");
+                setPlaylistItemDraft({ label: "", url: "" });
+            }
         },
-        []
+        [editingPlaylistItemId, playlist, setPlaylist]
     );
 
     const clearPlaylist = useCallback(() => {
         setPlaylist([]);
         setActivePlaylistIndex(-1);
-        setSuccessMessage("Video playlist cleared.");
-    }, []);
+        setEditingPlaylistItemId("");
+        setSuccessMessage(
+            `Cleared videos from “${activePlaylist?.name || "playlist"}”.`
+        );
+    }, [activePlaylist?.name, setPlaylist]);
 
     const handlePlaylistEnded = useCallback(() => {
         playbackCommandRef.current += 1;
@@ -2459,6 +2885,9 @@ export default function Player() {
         setVideoEffects(INITIAL_VIDEO_EFFECTS);
         setAudioEffects(INITIAL_AUDIO_EFFECTS);
         setPlaybackRate(1);
+        setSmoothTempoEnabled(true);
+        setTempoSmoothingMs(180);
+        smoothedTempoRef.current = 1;
         setPitchSemitones(0);
         setFinePitchCents(0);
         setTimeWarp(INITIAL_TIME_WARP);
@@ -3029,9 +3458,12 @@ export default function Player() {
             size: fileSize,
             currentTime: Number(currentTime || 0),
             duration: Number(duration || 0),
+            activePlaylistId: playlistState.activePlaylistId,
             activePlaylistIndex,
             playlistAutoplay,
             playbackRate,
+            smoothTempoEnabled,
+            tempoSmoothingMs,
             volume: audioEffects.volume,
             muted: playerMuted,
             wasPlaying: isPlaying && playbackIntentRef.current === "play",
@@ -3039,6 +3471,7 @@ export default function Player() {
     }, [
         activePlaylistIndex,
         audioEffects.volume,
+        playlistState.activePlaylistId,
         currentTime,
         duration,
         fileSize,
@@ -3047,6 +3480,8 @@ export default function Player() {
         playbackRate,
         playerMuted,
         playlistAutoplay,
+        smoothTempoEnabled,
+        tempoSmoothingMs,
         sourceLabel,
         sourceType,
     ]);
@@ -3102,7 +3537,7 @@ export default function Player() {
                 ? getLfoValue(pitchPhase, pitchWarp.shape) * pitchWarp.depth
                 : 0;
 
-            const liveTempo = clamp(
+            const targetTempo = clamp(
                 playbackRate * (1 + timeModulation),
                 0.25,
                 4
@@ -3112,9 +3547,39 @@ export default function Player() {
                 -24,
                 24
             );
+            const previousFrameTime = lastWarpFrameTimeRef.current || now;
+            const elapsedMs = clamp(now - previousFrameTime, 0, 100);
+            const smoothingWindow = smoothTempoEnabled
+                ? clamp(tempoSmoothingMs, 20, 800)
+                : 0;
+            const smoothingAmount = smoothingWindow
+                ? 1 - Math.exp(-elapsedMs / smoothingWindow)
+                : 1;
+            const previousTempo = clamp(
+                Number(smoothedTempoRef.current || video.playbackRate || 1),
+                0.25,
+                4
+            );
+            let liveTempo = clamp(
+                previousTempo +
+                (targetTempo - previousTempo) * smoothingAmount,
+                0.25,
+                4
+            );
 
-            if (Math.abs(video.playbackRate - liveTempo) > 0.0005) {
+            if (Math.abs(targetTempo - liveTempo) < 0.0005) {
+                liveTempo = targetTempo;
+            }
+
+            lastWarpFrameTimeRef.current = now;
+            smoothedTempoRef.current = liveTempo;
+
+            // The media element owns the synchronized video clock. SoundTouch
+            // receives the exact same mirrored rate so it can correct pitch
+            // without independently stretching the stream and drifting behind.
+            if (Math.abs(video.playbackRate - liveTempo) > 0.0001) {
                 video.playbackRate = liveTempo;
+                video.defaultPlaybackRate = liveTempo;
             }
 
             const context = audioContextRef.current;
@@ -3123,21 +3588,39 @@ export default function Player() {
             if (soundTouchNode && context) {
                 const time = context.currentTime;
 
-                soundTouchNode.playbackRate.setTargetAtTime(
-                    liveTempo,
-                    time,
-                    0.01
-                );
-                soundTouchNode.pitchSemitones.setTargetAtTime(
-                    livePitch,
-                    time,
-                    0.01
-                );
-                soundTouchNode.pitch.setTargetAtTime(
-                    2 ** (finePitchCents / 1200),
-                    time,
-                    0.01
-                );
+                video.preservesPitch = false;
+                video.webkitPreservesPitch = false;
+                video.mozPreservesPitch = false;
+                if (
+                    Math.abs(lastAppliedTempoRef.current - liveTempo) > 0.0001
+                ) {
+                    soundTouchNode.playbackRate.setValueAtTime(liveTempo, time);
+                    lastAppliedTempoRef.current = liveTempo;
+                }
+
+                if (
+                    Math.abs(lastAppliedPitchRef.current - livePitch) > 0.001
+                ) {
+                    soundTouchNode.pitchSemitones.setTargetAtTime(
+                        livePitch,
+                        time,
+                        0.02
+                    );
+                    lastAppliedPitchRef.current = livePitch;
+                }
+
+                if (
+                    Math.abs(
+                        lastAppliedFinePitchRef.current - finePitchCents
+                    ) > 0.1
+                ) {
+                    soundTouchNode.pitch.setTargetAtTime(
+                        2 ** (finePitchCents / 1200),
+                        time,
+                        0.02
+                    );
+                    lastAppliedFinePitchRef.current = finePitchCents;
+                }
             } else {
                 video.preservesPitch = true;
                 video.webkitPreservesPitch = true;
@@ -3298,7 +3781,7 @@ export default function Player() {
                     break;
             }
 
-            video.style.transform = [
+            const nextTransform = [
                 `perspective(900px)`,
                 `translate3d(${translateX}px, ${translateY}px, 0)`,
                 `rotateX(${perspectiveRotateX}deg)`,
@@ -3308,11 +3791,15 @@ export default function Player() {
                 `scale(${scaleX}, ${scaleY})`,
             ].join(" ");
 
+            if (lastVideoTransformRef.current !== nextTransform) {
+                video.style.transform = nextTransform;
+                lastVideoTransformRef.current = nextTransform;
+            }
+
             const svgFilterEnabled =
                 visualWarp.mode !== "none" &&
                 visualWarp.displacement > 0;
-
-            video.style.filter = [
+            const nextFilter = [
                 filterString,
                 hueJitter ? `hue-rotate(${hueJitter}deg)` : "",
                 svgFilterEnabled ? "url(#playerAnimatedWarpFilter)" : "",
@@ -3320,7 +3807,12 @@ export default function Player() {
                 .filter(Boolean)
                 .join(" ");
 
-            if (turbulenceRef.current) {
+            if (lastVideoFilterRef.current !== nextFilter) {
+                video.style.filter = nextFilter;
+                lastVideoFilterRef.current = nextFilter;
+            }
+
+            if (svgFilterEnabled && turbulenceRef.current) {
                 turbulenceRef.current.setAttribute(
                     "baseFrequency",
                     `${Math.max(0.0001, turbulenceX)} ${Math.max(
@@ -3341,7 +3833,7 @@ export default function Player() {
                 );
             }
 
-            if (displacementRef.current) {
+            if (svgFilterEnabled && displacementRef.current) {
                 displacementRef.current.setAttribute(
                     "scale",
                     String(displacementScale)
@@ -3373,7 +3865,12 @@ export default function Player() {
 
             video.style.transform = "";
             video.style.filter = filterString;
-            video.playbackRate = playbackRate;
+            lastVideoTransformRef.current = "";
+            lastVideoFilterRef.current = filterString;
+            lastWarpFrameTimeRef.current = 0;
+            smoothedTempoRef.current = clamp(playbackRate, 0.25, 4);
+            video.playbackRate = smoothedTempoRef.current;
+            video.defaultPlaybackRate = smoothedTempoRef.current;
         };
     }, [
         filterString,
@@ -3381,6 +3878,8 @@ export default function Player() {
         pitchSemitones,
         pitchWarp,
         playbackRate,
+        smoothTempoEnabled,
+        tempoSmoothingMs,
         timeWarp,
         videoEffects.rotate,
         videoEffects.zoom,
@@ -3483,16 +3982,35 @@ export default function Player() {
     }, [englishVoiceEnabled]);
 
     useEffect(() => {
-        writeStoredVideoPlaylist(playlist);
-    }, [playlist]);
+        writeStoredVideoPlaylistLibrary(playlistState);
+    }, [playlistState]);
 
     useEffect(() => {
         const syncPlaylist = (event) => {
-            if (event?.type === "storage" && event.key !== VIDEO_PLAYLIST_STORAGE_KEY) {
+            if (
+                event?.type === "storage" &&
+                ![
+                    VIDEO_PLAYLIST_STORAGE_KEY,
+                    VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY,
+                ].includes(event.key)
+            ) {
                 return;
             }
 
-            setPlaylist(readStoredVideoPlaylist());
+            if (
+                event?.type === "storage" &&
+                event.key === VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY
+            ) {
+                setPlaylistState(readStoredVideoPlaylistLibrary());
+                return;
+            }
+
+            const legacyItems = readLegacyVideoPlaylist();
+            if (legacyItems.length) {
+                setPlaylist((current) =>
+                    appendUniquePlaylistItems(current, legacyItems)
+                );
+            }
         };
 
         window.addEventListener("storage", syncPlaylist);
@@ -3502,7 +4020,7 @@ export default function Player() {
             window.removeEventListener("storage", syncPlaylist);
             window.removeEventListener("audiomasterlab:video-playlist-updated", syncPlaylist);
         };
-    }, []);
+    }, [setPlaylist]);
 
     useEffect(() => {
         if (playlistBootstrapRef.current) {
@@ -3552,6 +4070,10 @@ export default function Player() {
         if (restored?.source && !String(restored.source).startsWith("blob:")) {
             pendingRestoreTimeRef.current = Math.max(0, Number(restored.currentTime) || 0);
             setPlaylistAutoplay(restored.playlistAutoplay !== false);
+            setSmoothTempoEnabled(restored.smoothTempoEnabled !== false);
+            setTempoSmoothingMs(
+                clamp(Number(restored.tempoSmoothingMs) || 180, 20, 800)
+            );
             loadRemoteUrl(restored.source, {
                 label: restored.label || "Restored video",
                 size: Number(restored.size || 0),
@@ -3561,7 +4083,7 @@ export default function Player() {
                     : -1,
             });
         }
-    }, [loadRemoteUrl, playPlaylistItem, playlist]);
+    }, [loadRemoteUrl, playPlaylistItem, playlist, setPlaylist]);
 
     useEffect(() => {
         return () => {
@@ -3943,11 +4465,11 @@ export default function Player() {
                             </DawPanel>
 
                             <DawPanel
-                                eyebrow="Session"
-                                title={`Playlist · ${playlist.length}`}
+                                eyebrow={`Playlists · ${playlistState.playlists.length}`}
+                                title={`${activePlaylist?.name || "Playlist"} · ${playlist.length}`}
                                 icon={<PlaylistPlayRounded fontSize="small" />}
                                 action={
-                                    <Tooltip title="Clear playlist">
+                                    <Tooltip title="Clear videos from active playlist">
                                         <span>
                                             <IconButton
                                                 disabled={!playlist.length}
@@ -3961,110 +4483,400 @@ export default function Player() {
                                     </Tooltip>
                                 }
                             >
-                                <FormControlLabel
-                                    sx={{ mb: 0.75 }}
-                                    control={
-                                        <Switch
-                                            size="small"
-                                            checked={playlistAutoplay}
-                                            onChange={(event) => setPlaylistAutoplay(event.target.checked)}
-                                        />
-                                    }
-                                    label={
-                                        <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.64)" }}>
-                                            Auto-advance
-                                        </Typography>
-                                    }
-                                />
-                                <Stack
-                                    spacing={0.65}
-                                    sx={{ maxHeight: { lg: 475 }, overflowY: "auto", pr: 0.3 }}
-                                >
-                                    {playlist.length ? (
-                                        playlist.map((item, index) => {
-                                            const active = index === activePlaylistIndex;
-                                            return (
-                                                <Paper
-                                                    key={item.id}
-                                                    elevation={0}
-                                                    onDoubleClick={() => togglePlaylistItem(index)}
-                                                    sx={{
-                                                        p: 0.85,
-                                                        cursor: "pointer",
-                                                        borderRadius: 1.5,
-                                                        border: active
-                                                            ? "1px solid rgba(158,232,255,0.42)"
-                                                            : "1px solid rgba(255,255,255,0.07)",
-                                                        background: active
-                                                            ? "linear-gradient(90deg, rgba(158,232,255,0.12), rgba(179,140,255,0.08))"
-                                                            : "rgba(0,0,0,0.18)",
-                                                    }}
-                                                >
-                                                    <Stack direction="row" spacing={0.8} alignItems="center">
-                                                        <IconButton
-                                                            size="small"
-                                                            aria-label={
-                                                                active && isPlaying
-                                                                    ? `Pause ${item.label}`
-                                                                    : `Play ${item.label}`
-                                                            }
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                togglePlaylistItem(index);
-                                                            }}
-                                                            onDoubleClick={(event) => event.stopPropagation()}
-                                                            sx={{ ...iconButtonSx, width: 29, height: 29 }}
-                                                        >
-                                                            {active && isPlaying ? (
-                                                                <PauseRounded fontSize="small" />
-                                                            ) : (
-                                                                <PlayArrowRounded fontSize="small" />
-                                                            )}
-                                                        </IconButton>
-                                                        <Box minWidth={0} flex={1}>
-                                                            <Typography
-                                                                noWrap
-                                                                sx={{
-                                                                    color: active ? "#c9f6ff" : "rgba(255,255,255,0.78)",
-                                                                    fontSize: 10.5,
-                                                                    fontWeight: 900,
-                                                                }}
-                                                            >
-                                                                {index + 1}. {item.label}
-                                                            </Typography>
-                                                            <Typography
-                                                                noWrap
-                                                                sx={{ color: "rgba(255,255,255,0.34)", fontSize: 8.5 }}
-                                                            >
-                                                                {item.sourceType}{item.size ? ` · ${formatBytes(item.size)}` : ""}
-                                                            </Typography>
-                                                        </Box>
-                                                        <IconButton
-                                                            size="small"
-                                                            onClick={() => removePlaylistItem(index)}
-                                                            sx={{ color: "rgba(255,255,255,0.38)" }}
-                                                        >
-                                                            <DeleteRounded sx={{ fontSize: 16 }} />
-                                                        </IconButton>
-                                                    </Stack>
-                                                </Paper>
-                                            );
-                                        })
-                                    ) : (
-                                        <Box
+                                <Stack spacing={1}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel sx={{ color: "rgba(255,255,255,0.55)" }}>
+                                            Active playlist
+                                        </InputLabel>
+                                        <Select
+                                            value={playlistState.activePlaylistId}
+                                            label="Active playlist"
+                                            onChange={(event) =>
+                                                selectVideoPlaylist(event.target.value)
+                                            }
                                             sx={{
-                                                minHeight: 120,
-                                                display: "grid",
-                                                placeItems: "center",
+                                                color: "white",
                                                 borderRadius: 1.5,
-                                                border: "1px dashed rgba(255,255,255,0.1)",
+                                                fontSize: 11,
                                             }}
                                         >
-                                            <Typography sx={{ color: "rgba(255,255,255,0.32)", fontSize: 11 }}>
-                                                Add remote videos to build a set.
+                                            {playlistState.playlists.map((savedPlaylist) => (
+                                                <MenuItem
+                                                    key={savedPlaylist.id}
+                                                    value={savedPlaylist.id}
+                                                >
+                                                    {savedPlaylist.name} · {savedPlaylist.items.length}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+
+                                    <Stack direction="row" spacing={0.65}>
+                                        <TextField
+                                            value={playlistNameDraft}
+                                            onChange={(event) =>
+                                                setPlaylistNameDraft(event.target.value)
+                                            }
+                                            size="small"
+                                            fullWidth
+                                            label="Playlist name"
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter") {
+                                                    renameActiveVideoPlaylist();
+                                                }
+                                            }}
+                                            sx={{
+                                                "& .MuiOutlinedInput-root": {
+                                                    color: "white",
+                                                    borderRadius: 1.5,
+                                                    fontSize: 11,
+                                                },
+                                            }}
+                                        />
+                                        <Button
+                                            onClick={renameActiveVideoPlaylist}
+                                            sx={{ ...softButtonSx, minWidth: 78 }}
+                                        >
+                                            Rename
+                                        </Button>
+                                    </Stack>
+
+                                    <Stack direction="row" spacing={0.65}>
+                                        <TextField
+                                            value={newPlaylistName}
+                                            onChange={(event) =>
+                                                setNewPlaylistName(event.target.value)
+                                            }
+                                            size="small"
+                                            fullWidth
+                                            label="New playlist"
+                                            placeholder={`Playlist ${playlistState.playlists.length + 1}`}
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter") {
+                                                    createVideoPlaylist();
+                                                }
+                                            }}
+                                            sx={{
+                                                "& .MuiOutlinedInput-root": {
+                                                    color: "white",
+                                                    borderRadius: 1.5,
+                                                    fontSize: 11,
+                                                },
+                                            }}
+                                        />
+                                        <Button
+                                            onClick={createVideoPlaylist}
+                                            startIcon={<PlaylistAddRounded />}
+                                            sx={{ ...softButtonSx, minWidth: 92 }}
+                                        >
+                                            Create
+                                        </Button>
+                                    </Stack>
+
+                                    <Stack direction="row" spacing={0.65}>
+                                        <Button
+                                            fullWidth
+                                            onClick={duplicateActiveVideoPlaylist}
+                                            startIcon={<ContentCopyRounded />}
+                                            sx={softButtonSx}
+                                        >
+                                            Duplicate
+                                        </Button>
+                                        <Button
+                                            fullWidth
+                                            disabled={playlistState.playlists.length <= 1}
+                                            onClick={deleteActiveVideoPlaylist}
+                                            startIcon={<DeleteRounded />}
+                                            sx={softButtonSx}
+                                        >
+                                            Delete list
+                                        </Button>
+                                    </Stack>
+
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                size="small"
+                                                checked={playlistAutoplay}
+                                                onChange={(event) =>
+                                                    setPlaylistAutoplay(event.target.checked)
+                                                }
+                                            />
+                                        }
+                                        label={
+                                            <Typography
+                                                sx={{
+                                                    fontSize: 11,
+                                                    color: "rgba(255,255,255,0.64)",
+                                                }}
+                                            >
+                                                Auto-advance this playlist
                                             </Typography>
-                                        </Box>
-                                    )}
+                                        }
+                                    />
+
+                                    <Stack
+                                        spacing={0.65}
+                                        sx={{
+                                            maxHeight: { lg: 560 },
+                                            overflowY: "auto",
+                                            pr: 0.3,
+                                        }}
+                                    >
+                                        {playlist.length ? (
+                                            playlist.map((item, index) => {
+                                                const active = index === activePlaylistIndex;
+                                                const editing =
+                                                    editingPlaylistItemId === item.id;
+
+                                                return (
+                                                    <Paper
+                                                        key={item.id}
+                                                        elevation={0}
+                                                        onDoubleClick={() =>
+                                                            togglePlaylistItem(index)
+                                                        }
+                                                        sx={{
+                                                            p: 0.85,
+                                                            cursor: "pointer",
+                                                            borderRadius: 1.5,
+                                                            border: active
+                                                                ? "1px solid rgba(158,232,255,0.42)"
+                                                                : "1px solid rgba(255,255,255,0.07)",
+                                                            background: active
+                                                                ? "linear-gradient(90deg, rgba(158,232,255,0.12), rgba(179,140,255,0.08))"
+                                                                : "rgba(0,0,0,0.18)",
+                                                        }}
+                                                    >
+                                                        <Stack
+                                                            direction="row"
+                                                            spacing={0.8}
+                                                            alignItems="center"
+                                                        >
+                                                            <IconButton
+                                                                size="small"
+                                                                aria-label={
+                                                                    active && isPlaying
+                                                                        ? `Pause ${item.label}`
+                                                                        : `Play ${item.label}`
+                                                                }
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    togglePlaylistItem(index);
+                                                                }}
+                                                                onDoubleClick={(event) =>
+                                                                    event.stopPropagation()
+                                                                }
+                                                                sx={{
+                                                                    ...iconButtonSx,
+                                                                    width: 29,
+                                                                    height: 29,
+                                                                }}
+                                                            >
+                                                                {active && isPlaying ? (
+                                                                    <PauseRounded fontSize="small" />
+                                                                ) : (
+                                                                    <PlayArrowRounded fontSize="small" />
+                                                                )}
+                                                            </IconButton>
+                                                            <Box minWidth={0} flex={1}>
+                                                                <Typography
+                                                                    noWrap
+                                                                    sx={{
+                                                                        color: active
+                                                                            ? "#c9f6ff"
+                                                                            : "rgba(255,255,255,0.78)",
+                                                                        fontSize: 10.5,
+                                                                        fontWeight: 900,
+                                                                    }}
+                                                                >
+                                                                    {index + 1}. {item.label}
+                                                                </Typography>
+                                                                <Typography
+                                                                    noWrap
+                                                                    sx={{
+                                                                        color: "rgba(255,255,255,0.34)",
+                                                                        fontSize: 8.5,
+                                                                    }}
+                                                                >
+                                                                    {item.sourceType}
+                                                                    {item.size
+                                                                        ? ` · ${formatBytes(item.size)}`
+                                                                        : ""}
+                                                                </Typography>
+                                                            </Box>
+                                                            <Tooltip title="Edit video">
+                                                                <IconButton
+                                                                    size="small"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        beginEditPlaylistItem(item);
+                                                                    }}
+                                                                    onDoubleClick={(event) =>
+                                                                        event.stopPropagation()
+                                                                    }
+                                                                    sx={{
+                                                                        color: "rgba(255,255,255,0.52)",
+                                                                    }}
+                                                                >
+                                                                    <TuneRounded sx={{ fontSize: 16 }} />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <IconButton
+                                                                size="small"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    removePlaylistItem(index);
+                                                                }}
+                                                                onDoubleClick={(event) =>
+                                                                    event.stopPropagation()
+                                                                }
+                                                                sx={{
+                                                                    color: "rgba(255,255,255,0.38)",
+                                                                }}
+                                                            >
+                                                                <DeleteRounded sx={{ fontSize: 16 }} />
+                                                            </IconButton>
+                                                        </Stack>
+
+                                                        {editing && (
+                                                            <Stack
+                                                                spacing={0.75}
+                                                                sx={{
+                                                                    mt: 0.8,
+                                                                    pt: 0.8,
+                                                                    borderTop:
+                                                                        "1px solid rgba(255,255,255,0.08)",
+                                                                }}
+                                                                onClick={(event) =>
+                                                                    event.stopPropagation()
+                                                                }
+                                                                onDoubleClick={(event) =>
+                                                                    event.stopPropagation()
+                                                                }
+                                                            >
+                                                                <TextField
+                                                                    value={playlistItemDraft.label}
+                                                                    onChange={(event) =>
+                                                                        setPlaylistItemDraft(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                label: event.target.value,
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    size="small"
+                                                                    label="Video title"
+                                                                    fullWidth
+                                                                    sx={{
+                                                                        "& .MuiOutlinedInput-root": {
+                                                                            color: "white",
+                                                                            borderRadius: 1.5,
+                                                                            fontSize: 10.5,
+                                                                        },
+                                                                    }}
+                                                                />
+                                                                <TextField
+                                                                    value={playlistItemDraft.url}
+                                                                    onChange={(event) =>
+                                                                        setPlaylistItemDraft(
+                                                                            (current) => ({
+                                                                                ...current,
+                                                                                url: event.target.value,
+                                                                            })
+                                                                        )
+                                                                    }
+                                                                    size="small"
+                                                                    label="Video URL"
+                                                                    fullWidth
+                                                                    multiline
+                                                                    minRows={2}
+                                                                    sx={{
+                                                                        "& .MuiOutlinedInput-root": {
+                                                                            color: "white",
+                                                                            borderRadius: 1.5,
+                                                                            fontSize: 10,
+                                                                        },
+                                                                    }}
+                                                                />
+                                                                <Stack
+                                                                    direction="row"
+                                                                    spacing={0.5}
+                                                                    useFlexGap
+                                                                    flexWrap="wrap"
+                                                                >
+                                                                    <Button
+                                                                        size="small"
+                                                                        onClick={saveEditedPlaylistItem}
+                                                                        sx={softButtonSx}
+                                                                    >
+                                                                        Save
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="small"
+                                                                        onClick={() => {
+                                                                            setEditingPlaylistItemId("");
+                                                                            setPlaylistItemDraft({
+                                                                                label: "",
+                                                                                url: "",
+                                                                            });
+                                                                        }}
+                                                                        sx={softButtonSx}
+                                                                    >
+                                                                        Cancel
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="small"
+                                                                        disabled={index === 0}
+                                                                        onClick={() =>
+                                                                            movePlaylistItem(index, -1)
+                                                                        }
+                                                                        sx={softButtonSx}
+                                                                    >
+                                                                        Move up
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="small"
+                                                                        disabled={
+                                                                            index === playlist.length - 1
+                                                                        }
+                                                                        onClick={() =>
+                                                                            movePlaylistItem(index, 1)
+                                                                        }
+                                                                        sx={softButtonSx}
+                                                                    >
+                                                                        Move down
+                                                                    </Button>
+                                                                </Stack>
+                                                            </Stack>
+                                                        )}
+                                                    </Paper>
+                                                );
+                                            })
+                                        ) : (
+                                            <Box
+                                                sx={{
+                                                    minHeight: 120,
+                                                    display: "grid",
+                                                    placeItems: "center",
+                                                    borderRadius: 1.5,
+                                                    border:
+                                                        "1px dashed rgba(255,255,255,0.1)",
+                                                }}
+                                            >
+                                                <Typography
+                                                    sx={{
+                                                        color: "rgba(255,255,255,0.32)",
+                                                        fontSize: 11,
+                                                        textAlign: "center",
+                                                        px: 2,
+                                                    }}
+                                                >
+                                                    Add remote videos to “{activePlaylist?.name}”.
+                                                </Typography>
+                                            </Box>
+                                        )}
+                                    </Stack>
                                 </Stack>
                             </DawPanel>
                         </Stack>
@@ -4169,7 +4981,7 @@ export default function Player() {
                                         controls={false}
                                         controlsList="nodownload noplaybackrate"
                                         playsInline
-                                        preload="metadata"
+                                        preload="auto"
                                         disablePictureInPicture={false}
                                         x-webkit-airplay="allow"
                                         onPlay={() => {
@@ -4792,13 +5604,135 @@ export default function Player() {
                                         </Stack>
                                     </DawSection>
 
-                                    <DawSection title="SoundTouch Time + Pitch" subtitle="Independent tempo and pitch processing">
-                                        <EffectSlider label="Base tempo" value={playbackRate} minimum={0.25} maximum={4} step={0.01} unit="×" onChange={setPlaybackRate} />
-                                        <EffectSlider label="Pitch" value={pitchSemitones} minimum={-24} maximum={24} step={0.1} unit=" st" onChange={setPitchSemitones} />
-                                        <EffectSlider label="Fine pitch" value={finePitchCents} minimum={-100} maximum={100} step={1} unit=" ct" onChange={setFinePitchCents} />
-                                        <Stack direction="row" spacing={0.75} sx={{ mt: 0.75 }}>
-                                            <Chip size="small" label={`LIVE ${liveWarpReadout.tempo.toFixed(3)}×`} sx={{ ...monoTextSx, color: "#9ee8ff", fontSize: 9 }} />
-                                            <Chip size="small" label={`${liveWarpReadout.pitch.toFixed(2)} st`} sx={{ ...monoTextSx, color: "#c5adff", fontSize: 9 }} />
+                                    <DawSection
+                                        title="Smooth SoundTouch Time + Pitch"
+                                        subtitle="The video clock and SoundTouch receive one mirrored, smoothed tempo so audio stays synchronized"
+                                    >
+                                        <FormControlLabel
+                                            control={
+                                                <Switch
+                                                    size="small"
+                                                    checked={smoothTempoEnabled}
+                                                    onChange={(event) =>
+                                                        setSmoothTempoEnabled(
+                                                            event.target.checked
+                                                        )
+                                                    }
+                                                />
+                                            }
+                                            label={
+                                                <Typography sx={{ fontSize: 10.5 }}>
+                                                    Smooth tempo changes
+                                                </Typography>
+                                            }
+                                        />
+                                        <EffectSlider
+                                            label="Video tempo"
+                                            value={playbackRate}
+                                            minimum={0.25}
+                                            maximum={4}
+                                            step={0.01}
+                                            unit="×"
+                                            onChange={setPlaybackRate}
+                                        />
+                                        <EffectSlider
+                                            label="Tempo smoothing"
+                                            value={tempoSmoothingMs}
+                                            minimum={20}
+                                            maximum={800}
+                                            step={10}
+                                            unit=" ms"
+                                            onChange={setTempoSmoothingMs}
+                                        />
+                                        <Stack
+                                            direction="row"
+                                            spacing={0.5}
+                                            useFlexGap
+                                            flexWrap="wrap"
+                                            sx={{ mb: 0.75 }}
+                                        >
+                                            {[0.5, 0.75, 0.85, 1, 1.25].map(
+                                                (tempoPreset) => (
+                                                    <Button
+                                                        key={tempoPreset}
+                                                        size="small"
+                                                        onClick={() =>
+                                                            setPlaybackRate(tempoPreset)
+                                                        }
+                                                        sx={{
+                                                            ...softButtonSx,
+                                                            minWidth: 48,
+                                                            px: 1,
+                                                            fontSize: 9,
+                                                        }}
+                                                    >
+                                                        {tempoPreset.toFixed(2)}×
+                                                    </Button>
+                                                )
+                                            )}
+                                        </Stack>
+                                        <EffectSlider
+                                            label="Pitch"
+                                            value={pitchSemitones}
+                                            minimum={-24}
+                                            maximum={24}
+                                            step={0.1}
+                                            unit=" st"
+                                            onChange={setPitchSemitones}
+                                        />
+                                        <EffectSlider
+                                            label="Fine pitch"
+                                            value={finePitchCents}
+                                            minimum={-100}
+                                            maximum={100}
+                                            step={1}
+                                            unit=" ct"
+                                            onChange={setFinePitchCents}
+                                        />
+                                        <Stack
+                                            direction="row"
+                                            spacing={0.75}
+                                            useFlexGap
+                                            flexWrap="wrap"
+                                            sx={{ mt: 0.75 }}
+                                        >
+                                            <Chip
+                                                size="small"
+                                                label={`LIVE ${liveWarpReadout.tempo.toFixed(
+                                                    3
+                                                )}×`}
+                                                sx={{
+                                                    ...monoTextSx,
+                                                    color: "#9ee8ff",
+                                                    fontSize: 9,
+                                                }}
+                                            />
+                                            <Chip
+                                                size="small"
+                                                label={`${liveWarpReadout.pitch.toFixed(
+                                                    2
+                                                )} st`}
+                                                sx={{
+                                                    ...monoTextSx,
+                                                    color: "#c5adff",
+                                                    fontSize: 9,
+                                                }}
+                                            />
+                                            <Chip
+                                                size="small"
+                                                label={
+                                                    soundTouchNodeRef.current
+                                                        ? "SOUNDTOUCH SYNC"
+                                                        : "NATIVE FALLBACK"
+                                                }
+                                                sx={{
+                                                    ...monoTextSx,
+                                                    color: soundTouchNodeRef.current
+                                                        ? "#7ef4b6"
+                                                        : "#ffcf7a",
+                                                    fontSize: 9,
+                                                }}
+                                            />
                                         </Stack>
                                     </DawSection>
 
