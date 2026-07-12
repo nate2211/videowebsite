@@ -44,8 +44,13 @@ import {AppNavBar, GradientPage} from "../components/components";
 const ARCHIVE_SEARCH_BATCH_SIZE = 24;
 const PLAYER_ROUTE = "/player";
 const PLAYER_PLAYLIST_STORAGE_KEY = "audiomasterlab-video-playlist-v1";
+const PLAYER_PLAYLIST_LIBRARY_STORAGE_KEY =
+    "audiomasterlab-video-playlist-library-v2";
+const PLAYER_PLAYLIST_LIBRARY_VERSION = 2;
+const PLAYER_HANDOFF_STORAGE_KEY = "audiomasterlab-video-player-handoff-v1";
 const CUSTOM_COLLECTIONS_STORAGE_KEY = "audiomasterlab-archive-custom-collections-v1";
-const ARCHIVE_PAGE_BUILD = "archive-direct-media-v4-pagination-custom-collections";
+const ARCHIVE_PAGE_BUILD =
+    "archive-direct-media-v5-player-library-handoff";
 const MIN_PLAYABLE_BYTES = 128 * 1024;
 
 const PLAYABLE_VIDEO_EXTENSIONS = [".mp4", ".m4v", ".webm", ".ogv", ".ogg"];
@@ -440,26 +445,199 @@ function makePlaylistItemId(url) {
   return `video-${(hash >>> 0).toString(36)}`;
 }
 
-function readPlayerPlaylist() {
+function normalizePlayerPlaylistItem(item) {
+  const url = String(item?.url || "").trim();
+  if (!url) return null;
+
+  return {
+    ...item,
+    id: String(item?.id || makePlaylistItemId(url)),
+    url,
+    label: String(item?.label || item?.fileName || "Untitled video"),
+    fileName: String(item?.fileName || ""),
+    posterUrl: String(item?.posterUrl || ""),
+    sourceType: String(item?.sourceType || "Archive.org"),
+    detailsUrl: String(item?.detailsUrl || ""),
+    archiveIdentifier: String(item?.archiveIdentifier || ""),
+    archiveCollectionIds: Array.isArray(item?.archiveCollectionIds)
+        ? item.archiveCollectionIds
+        : [],
+    archiveCollectionNames: Array.isArray(item?.archiveCollectionNames)
+        ? item.archiveCollectionNames
+        : [],
+    size: Number(item?.size || 0),
+  };
+}
+
+function readLegacyPlayerPlaylist() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(PLAYER_PLAYLIST_STORAGE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.filter((item) => item?.url) : [];
+    const parsed = JSON.parse(
+        localStorage.getItem(PLAYER_PLAYLIST_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsed)
+        ? parsed.map(normalizePlayerPlaylistItem).filter(Boolean)
+        : [];
   } catch {
     return [];
   }
 }
 
+function normalizePlayerPlaylistLibrary(value) {
+  const rawPlaylists = Array.isArray(value?.playlists) ? value.playlists : [];
+  const playlists = rawPlaylists
+      .map((playlist, index) => {
+        const items = Array.isArray(playlist?.items)
+            ? playlist.items.map(normalizePlayerPlaylistItem).filter(Boolean)
+            : [];
+        const name =
+            String(playlist?.name || `Playlist ${index + 1}`).trim() ||
+            `Playlist ${index + 1}`;
+        const createdAt = Number(playlist?.createdAt || Date.now());
+
+        return {
+          id: String(playlist?.id || `playlist-${index + 1}`),
+          name,
+          items,
+          createdAt,
+          updatedAt: Number(playlist?.updatedAt || createdAt),
+        };
+      })
+      .filter(Boolean);
+
+  const safePlaylists = playlists.length
+      ? playlists
+      : [
+        {
+          id: "playlist-default",
+          name: "My Playlist",
+          items: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+  const requestedActiveId = String(value?.activePlaylistId || "");
+  const activePlaylistId = safePlaylists.some(
+      (playlist) => playlist.id === requestedActiveId
+  )
+      ? requestedActiveId
+      : safePlaylists[0].id;
+
+  return {
+    version: PLAYER_PLAYLIST_LIBRARY_VERSION,
+    activePlaylistId,
+    playlists: safePlaylists,
+  };
+}
+
+function readPlayerPlaylistLibrary() {
+  let library = null;
+
+  try {
+    const parsed = JSON.parse(
+        localStorage.getItem(PLAYER_PLAYLIST_LIBRARY_STORAGE_KEY) || "null"
+    );
+
+    if (
+        parsed &&
+        parsed.version === PLAYER_PLAYLIST_LIBRARY_VERSION &&
+        Array.isArray(parsed.playlists)
+    ) {
+      library = normalizePlayerPlaylistLibrary(parsed);
+    }
+  } catch {
+    // Fall back to the synchronized legacy playlist below.
+  }
+
+  if (!library) {
+    library = normalizePlayerPlaylistLibrary(null);
+  }
+
+  const legacyItems = readLegacyPlayerPlaylist();
+  if (!legacyItems.length) {
+    return library;
+  }
+
+  return {
+    ...library,
+    playlists: library.playlists.map((playlist) =>
+        playlist.id === library.activePlaylistId
+            ? {
+              ...playlist,
+              items: appendUniquePlaylistItems(playlist.items, legacyItems),
+              updatedAt: Date.now(),
+            }
+            : playlist
+    ),
+  };
+}
+
+function readPlayerPlaylist() {
+  const library = readPlayerPlaylistLibrary();
+  return (
+      library.playlists.find(
+          (playlist) => playlist.id === library.activePlaylistId
+      )?.items || []
+  );
+}
+
 function writePlayerPlaylist(items) {
   try {
-    localStorage.setItem(PLAYER_PLAYLIST_STORAGE_KEY, JSON.stringify(items));
+    const library = readPlayerPlaylistLibrary();
+    const normalizedItems = Array.isArray(items)
+        ? items.map(normalizePlayerPlaylistItem).filter(Boolean)
+        : [];
+    const nextLibrary = {
+      ...library,
+      playlists: library.playlists.map((playlist) =>
+          playlist.id === library.activePlaylistId
+              ? {
+                ...playlist,
+                items: normalizedItems,
+                updatedAt: Date.now(),
+              }
+              : playlist
+      ),
+    };
+
+    localStorage.setItem(
+        PLAYER_PLAYLIST_LIBRARY_STORAGE_KEY,
+        JSON.stringify(nextLibrary)
+    );
+    localStorage.setItem(
+        PLAYER_PLAYLIST_STORAGE_KEY,
+        JSON.stringify(normalizedItems)
+    );
 
     window.dispatchEvent(
         new CustomEvent("audiomasterlab:video-playlist-updated", {
-          detail: items,
+          detail: {
+            activePlaylistId: nextLibrary.activePlaylistId,
+            items: normalizedItems,
+            library: nextLibrary,
+          },
         })
     );
   } catch {
     // The /player route still receives the selected source through the URL query string.
+  }
+}
+
+function writePlayerHandoff(item, autoplay = true) {
+  try {
+    const normalized = normalizePlayerPlaylistItem(item);
+    if (!normalized) return;
+
+    sessionStorage.setItem(
+        PLAYER_HANDOFF_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          item: normalized,
+          autoplay: Boolean(autoplay),
+          createdAt: Date.now(),
+        })
+    );
+  } catch {
+    // Query-string handoff remains available when sessionStorage is blocked.
   }
 }
 
@@ -834,7 +1012,12 @@ function VideoResultCard({ item }) {
 
   useEffect(() => {
     setSelectedFileName(item.playableFiles[0]?.name || "");
+    setPlaylistAdded(false);
   }, [item.identifier, item.playableFiles]);
+
+  useEffect(() => {
+    setPlaylistAdded(false);
+  }, [selectedFileName]);
 
   const directSource = useMemo(() => {
     if (!selectedFile) return "";
@@ -854,6 +1037,7 @@ function VideoResultCard({ item }) {
     setPlaylistAdded(true);
 
     if (openPlayer) {
+      writePlayerHandoff(playlistItem, true);
       navigate(buildPlayerRoute(playlistItem, true));
     }
   };
@@ -960,6 +1144,7 @@ function VideoResultCard({ item }) {
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   <Button
+                      type="button"
                       onClick={() => addToPlayerPlaylist(true)}
                       startIcon={<QueuePlayNextRounded />}
                       sx={primaryButtonSx}
@@ -967,6 +1152,7 @@ function VideoResultCard({ item }) {
                     Play in /player
                   </Button>
                   <Button
+                      type="button"
                       onClick={() => addToPlayerPlaylist(false)}
                       startIcon={<PlaylistAddRounded />}
                       variant="outlined"
@@ -1311,6 +1497,7 @@ export default function Archive() {
     );
 
     if (openPlayer) {
+      writePlayerHandoff(playlistItems[0], true);
       navigate(buildPlayerRoute(playlistItems[0], true));
     }
   };
@@ -1660,6 +1847,7 @@ export default function Archive() {
                     {results.length ? (
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                           <Button
+                              type="button"
                               onClick={() => addAllResultsToPlayer(false)}
                               startIcon={<PlaylistAddRounded />}
                               variant="outlined"
@@ -1672,6 +1860,7 @@ export default function Archive() {
                             Add all loaded videos
                           </Button>
                           <Button
+                              type="button"
                               onClick={() => addAllResultsToPlayer(true)}
                               startIcon={<QueuePlayNextRounded />}
                               sx={primaryButtonSx}

@@ -68,7 +68,8 @@ const VIDEO_PLAYLIST_STORAGE_KEY = "audiomasterlab-video-playlist-v1";
 const VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY =
     "audiomasterlab-video-playlist-library-v2";
 const VIDEO_PLAYLIST_LIBRARY_VERSION = 2;
-const PLAYER_MEDIA_BUILD = "player-named-playlists-smooth-tempo-v5";
+const PLAYER_HANDOFF_STORAGE_KEY = "audiomasterlab-video-player-handoff-v1";
+const PLAYER_MEDIA_BUILD = "player-archive-handoff-named-playlists-v6";
 const VIDEO_PLAYER_STATE_STORAGE_KEY = "audiomasterlab-video-player-state-v2";
 const PLAYER_STATE_VERSION = 2;
 const ARCHIVE_PLAYABLE_EXTENSIONS = [".mp4", ".m4v", ".webm", ".ogv", ".ogg"];
@@ -593,6 +594,8 @@ function normalizeVideoPlaylistLibrary(value) {
 }
 
 function readStoredVideoPlaylistLibrary() {
+    let library = null;
+
     try {
         const parsed = JSON.parse(
             localStorage.getItem(VIDEO_PLAYLIST_LIBRARY_STORAGE_KEY) || "null"
@@ -603,20 +606,79 @@ function readStoredVideoPlaylistLibrary() {
             parsed.version === VIDEO_PLAYLIST_LIBRARY_VERSION &&
             Array.isArray(parsed.playlists)
         ) {
-            return normalizeVideoPlaylistLibrary(parsed);
+            library = normalizeVideoPlaylistLibrary(parsed);
         }
     } catch {
         // Fall through to the legacy single-playlist migration.
     }
 
-    const migratedPlaylist = createDefaultVideoPlaylist(
-        readLegacyVideoPlaylist()
-    );
+    if (!library) {
+        const migratedPlaylist = createDefaultVideoPlaylist(
+            readLegacyVideoPlaylist()
+        );
 
-    return normalizeVideoPlaylistLibrary({
-        activePlaylistId: migratedPlaylist.id,
-        playlists: [migratedPlaylist],
-    });
+        return normalizeVideoPlaylistLibrary({
+            activePlaylistId: migratedPlaylist.id,
+            playlists: [migratedPlaylist],
+        });
+    }
+
+    // Archive.js historically wrote only the legacy single-playlist key.
+    // Merge that synchronized key into the active named playlist so videos
+    // added from /archive are visible immediately when /player mounts.
+    const legacyItems = readLegacyVideoPlaylist();
+    if (!legacyItems.length) {
+        return library;
+    }
+
+    return {
+        ...library,
+        playlists: library.playlists.map((playlist) =>
+            playlist.id === library.activePlaylistId
+                ? {
+                    ...playlist,
+                    items: appendUniquePlaylistItems(
+                        playlist.items,
+                        legacyItems
+                    ),
+                    updatedAt: Date.now(),
+                }
+                : playlist
+        ),
+    };
+}
+
+function readPlayerHandoff() {
+    try {
+        const parsed = JSON.parse(
+            sessionStorage.getItem(PLAYER_HANDOFF_STORAGE_KEY) || "null"
+        );
+
+        if (
+            !parsed ||
+            parsed.version !== 1 ||
+            !parsed.item ||
+            Date.now() - Number(parsed.createdAt || 0) > 5 * 60 * 1000
+        ) {
+            sessionStorage.removeItem(PLAYER_HANDOFF_STORAGE_KEY);
+            return null;
+        }
+
+        return {
+            item: normalizePlaylistItem(parsed.item),
+            autoplay: parsed.autoplay !== false,
+        };
+    } catch {
+        return null;
+    }
+}
+
+function clearPlayerHandoff() {
+    try {
+        sessionStorage.removeItem(PLAYER_HANDOFF_STORAGE_KEY);
+    } catch {
+        // Nothing to clear when sessionStorage is unavailable.
+    }
 }
 
 function writeStoredVideoPlaylistLibrary(value) {
@@ -4005,6 +4067,30 @@ export default function Player() {
                 return;
             }
 
+            if (event?.type === "audiomasterlab:video-playlist-updated") {
+                const eventLibrary = event.detail?.library;
+                const incomingItems = Array.isArray(event.detail)
+                    ? event.detail
+                    : event.detail?.items;
+
+                if (
+                    eventLibrary?.version === VIDEO_PLAYLIST_LIBRARY_VERSION &&
+                    Array.isArray(eventLibrary.playlists)
+                ) {
+                    setPlaylistState(normalizeVideoPlaylistLibrary(eventLibrary));
+                    return;
+                }
+
+                if (Array.isArray(incomingItems)) {
+                    setPlaylist((current) =>
+                        appendUniquePlaylistItems(current, incomingItems)
+                    );
+                    return;
+                }
+            }
+
+            // The browser storage event for the legacy key does not fire in
+            // the same tab, but it does fire in other open /player tabs.
             const legacyItems = readLegacyVideoPlaylist();
             if (legacyItems.length) {
                 setPlaylist((current) =>
@@ -4014,11 +4100,17 @@ export default function Player() {
         };
 
         window.addEventListener("storage", syncPlaylist);
-        window.addEventListener("audiomasterlab:video-playlist-updated", syncPlaylist);
+        window.addEventListener(
+            "audiomasterlab:video-playlist-updated",
+            syncPlaylist
+        );
 
         return () => {
             window.removeEventListener("storage", syncPlaylist);
-            window.removeEventListener("audiomasterlab:video-playlist-updated", syncPlaylist);
+            window.removeEventListener(
+                "audiomasterlab:video-playlist-updated",
+                syncPlaylist
+            );
         };
     }, [setPlaylist]);
 
@@ -4033,28 +4125,55 @@ export default function Player() {
         const requestedId = params.get("playlistItem");
         const title = params.get("title") || "";
         const shouldAutoplay = params.get("autoplay") === "1";
+        const handoff = readPlayerHandoff();
+        const handoffMatchesRequest = Boolean(
+            handoff?.item &&
+            (!source || handoff.item.url === source) &&
+            (!requestedId || handoff.item.id === requestedId)
+        );
 
         if (source) {
-            const requestedItem = normalizePlaylistItem({
-                id: requestedId || undefined,
-                url: source,
-                label: title || undefined,
-                sourceType: isArchiveUrl(source) ? "Archive.org" : "Remote URL",
-            });
-            const nextPlaylist = appendUniquePlaylistItems(playlist, [requestedItem]);
+            const requestedItem = normalizePlaylistItem(
+                handoffMatchesRequest
+                    ? handoff.item
+                    : {
+                        id: requestedId || undefined,
+                        url: source,
+                        label: title || undefined,
+                        sourceType: isArchiveUrl(source)
+                            ? "Archive.org"
+                            : "Remote URL",
+                    }
+            );
+
+            clearPlayerHandoff();
+
+            if (!requestedItem) {
+                setErrorMessage("The Archive player handoff did not contain a valid video URL.");
+                return;
+            }
+
+            const nextPlaylist = appendUniquePlaylistItems(playlist, [
+                requestedItem,
+            ]);
             const requestedIndex = nextPlaylist.findIndex(
                 (item) => item.url === requestedItem.url
             );
+            const autoplay = handoffMatchesRequest
+                ? handoff.autoplay && shouldAutoplay
+                : shouldAutoplay;
 
             setPlaylist(nextPlaylist);
             loadRemoteUrl(requestedItem.url, {
                 label: requestedItem.label,
                 size: requestedItem.size,
-                autoplay: shouldAutoplay,
+                autoplay,
                 playlistIndex: requestedIndex,
             });
             return;
         }
+
+        clearPlayerHandoff();
 
         if (requestedId) {
             const requestedIndex = playlist.findIndex(
@@ -4068,7 +4187,10 @@ export default function Player() {
 
         const restored = storedPlayerStateRef.current;
         if (restored?.source && !String(restored.source).startsWith("blob:")) {
-            pendingRestoreTimeRef.current = Math.max(0, Number(restored.currentTime) || 0);
+            pendingRestoreTimeRef.current = Math.max(
+                0,
+                Number(restored.currentTime) || 0
+            );
             setPlaylistAutoplay(restored.playlistAutoplay !== false);
             setSmoothTempoEnabled(restored.smoothTempoEnabled !== false);
             setTempoSmoothingMs(
